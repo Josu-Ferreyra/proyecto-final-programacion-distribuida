@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 7
+    },
+    "auditLog": "/home/josu/UCH/programacion-distribuida/tp-5/logs/node1/.43b1f8b704c0fca683ee7adfff977f1bd47ed484-audit.json",
+    "files": [
+        {
+            "date": 1792106638594,
+            "name": "/home/josu/UCH/programacion-distribuida/tp-5/logs/node1/application-2026-10-15.log",
+            "hash": "e510383a49e9de0b95031efa7e2b3c79fa0a83ebb595b4881d2e0793741ef63a"
+        }
+    ],
+    "hashType": "sha256"
+}

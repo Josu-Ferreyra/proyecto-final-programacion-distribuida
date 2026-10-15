@@ -1,0 +1,9 @@
+# Ignore node_modules directory
+/node_modules
+
+# AI
+/.claude
+/.agents
+
+# Secrets
+.env

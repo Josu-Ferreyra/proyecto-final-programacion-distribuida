@@ -1,0 +1,5 @@
+2026-10-15 20:24:03 [ERROR] No se pudo conectar a MongoDB: No se pudo conectar con MongoDB: connect ECONNREFUSED 127.0.0.1:27017
+2026-10-15 20:24:50 [ERROR] No se pudo conectar a MongoDB: No se pudo conectar con MongoDB: connect ECONNREFUSED 127.0.0.1:27017
+2026-10-15 20:25:22 [ERROR] No se pudo iniciar HTTPS: ENOENT: no such file or directory, open '/home/josu/UCH/programacion-distribuida/tp-5/certs/server.pfx'
+2026-10-15 20:26:08 [ERROR] No se pudo iniciar HTTPS: mac verify failure
+2026-10-15 20:27:59 [ERROR] HTTPS_PFX_PATH no está configurado
