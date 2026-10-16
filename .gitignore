@@ -7,3 +7,6 @@
 
 # Secrets
 .env
+
+# Ignore logs
+/logs
