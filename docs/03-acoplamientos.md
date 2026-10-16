@@ -92,11 +92,12 @@ const resultado = await actualizar(entrada, { stock: stockNuevo });
   camino que también tiene que acordarse de tomar el lock y de no pisar valores. Una regla de
   negocio sin dueño termina copiada, y cada copia termina distinta.
 - **Propuesta de desacople:** el stock pasa a tener **un único dueño, Inventario**, que es el
-  único que lo escribe y el único que conoce el lock. Hacia afuera expone operaciones
-  **relativas** con intención explícita ("descontar 2 por la venta X", "ajustar a 50 por
-  reposición, motivo …") en lugar de "el stock ahora vale N". Así el cálculo
-  `stock - cantidad` se hace adentro de Inventario, sobre el valor vigente, y deja de existir
-  la ventana entre leer y escribir.
+  único que lo escribe y el único que conoce el lock. Hacia afuera expone operaciones con
+  intención explícita: "descontá estas cantidades para la compra X" (`POST /descuentos`) y
+  "el stock de este producto se ajusta a 50" (`PUT /stock/:productoId`). Las dos pasan por el
+  mismo lock, y el cálculo `stock - cantidad` se hace adentro de Inventario, sobre el valor
+  vigente. Nadie de afuera envía "el stock nuevo vale N" como resultado de una cuenta propia,
+  así que deja de existir la ventana entre leer y escribir.
 
 ## Caso 3: La compra es una función con cuatro responsabilidades y sin registro propio
 
@@ -131,9 +132,12 @@ return await ejecutarComando(res, comando);
   - Cambiar cómo se controla el stock (por ejemplo, reservar antes de pagar) obliga a
     modificar la compra, aunque la compra en sí no haya cambiado.
 - **Propuesta de desacople:** la compra pasa a un servicio de **Ventas** cuyo trabajo es
-  *coordinar y registrar*, no decidir sobre el stock. Valida la cantidad, consulta a Catálogo
-  el precio y la existencia, **pide** a Inventario que descuente, y guarda la venta con el
-  precio congelado. El lock y la regla R7 quedan adentro de Inventario, que es quien decide.
+  *coordinar y registrar*, no decidir sobre el stock. Valida las cantidades, consulta a
+  Catálogo el precio y la existencia (`GET /productos?ids=…`), **pide** a Inventario que
+  descuente (`POST /descuentos`) y guarda la compra con el precio congelado. El lock y la
+  regla R7 quedan adentro de Inventario, que es quien decide. Como el descuento es de varios
+  ítems y se identifica por el `compraId`, comprar varios productos y cancelar dejan de
+  requerir reescribir la función.
 
 ## Caso 4: El mecanismo de replicación conoce el negocio, y el negocio conoce el mecanismo
 
@@ -190,6 +194,6 @@ una sola conexión por nodo).
 | Caso | Acoplamiento detectado | Problema generado | Propuesta de desacople |
 |---|---|---|---|
 | 1 | El documento `Producto` mezcla la oferta (nombre, precio, categoría) con la disponibilidad (stock), con una sola `version` y los mismos endpoints. | No se puede publicar un producto sin stock ni cargar stock sin publicarlo; precio y ventas compiten por la misma fila y el mismo log; `version` no dice qué cambió. | Catálogo es dueño de nombre, precio y categoría; Inventario es dueño de la cantidad, referenciando al producto solo por id. |
-| 2 | El stock se escribe por dos caminos con reglas distintas: el `PUT` sin lock y la compra con lock, que además pisa con un valor absoluto. | **Pérdida de actualizaciones reproducida**: reposición a 50 + compra de 2 dejó 8 en vez de 48. Cada nueva forma de mover stock sería otra copia de la regla. | Inventario es el único que escribe el stock y el único que conoce el lock; expone operaciones relativas con motivo (`descuentos`, `ajustes`). |
+| 2 | El stock se escribe por dos caminos con reglas distintas: el `PUT` sin lock y la compra con lock, que además pisa con un valor absoluto. | **Pérdida de actualizaciones reproducida**: reposición a 50 + compra de 2 dejó 8 en vez de 48. Cada nueva forma de mover stock sería otra copia de la regla. | Inventario es el único que escribe el stock y el único que conoce el lock; expone `POST /descuentos` (calculado sobre el valor vigente) y `PUT /stock/:productoId`, ambos bajo el mismo lock. |
 | 3 | `comprarProducto` valida el pedido, chequea la oferta, toma el lock de Redis, aplica la regla de stock y arma el comando Raft, y no registra la compra. | No hay historial de ventas ni precio al momento de la compra; comprar varios productos o reservar implica reescribir la función. | Ventas coordina y registra la compra (precio congelado); le pide el descuento a Inventario, que es quien decide sobre el stock. |
 | 4 | La State Machine de Raft importa `Producto` y enumera las operaciones del negocio; el controlador arma comandos y headers del protocolo. | Cada operación nueva toca el consenso; un único log ordena juntas operaciones independientes; la API expone detalles internos. | Raft como módulo de infraestructura con State Machine inyectada; cada servicio tiene su propio log y su propia base. |
