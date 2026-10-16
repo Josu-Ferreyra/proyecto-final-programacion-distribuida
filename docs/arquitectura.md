@@ -1,0 +1,44 @@
+# Arquitectura propuesta — TP5
+
+Punto de partida: la API de productos del TP4 (cluster Raft de 3 nodos), ubicada en
+[`app-base/`](../app-base/) y marcada con el tag `tp5-base`.
+
+## Resumen de la propuesta
+
+La aplicación actual concentra en un único documento `productos` el catálogo (nombre,
+precio y categoría) y el stock, y resuelve la compra en una sola función que valida, toma
+el lock de Redis, calcula el stock nuevo y lo propone a Raft. Se propone dividirla en
+**tres microservicios, uno por responsabilidad de negocio**:
+
+| Servicio | Responsabilidad | Datos propios | Depende de |
+|---|---|---|---|
+| **Catálogo** | Qué se ofrece y a qué precio | Productos (nombre, precio vigente, categoría, activo) y categorías válidas | Nadie |
+| **Inventario** | Cuántas unidades hay y que nunca se venda de más | Stock por producto, descuentos por referencia, movimientos y el lock de Redis (interno) | Catálogo, solo al dar de alta stock |
+| **Ventas** | Concretar las compras y llevar su ciclo de vida | Compras e ítems con el nombre y el precio pagado | Catálogo e Inventario |
+
+**Por qué así.** Es la única alternativa evaluada que elimina los cuatro acoplamientos
+detectados. El stock pasa a tener un solo dueño, que lo descuenta sobre el valor vigente,
+y con eso desaparece la pérdida de actualizaciones entre el `PUT` de stock y la compra. La
+compra queda como un registro propio, con el precio congelado al momento de comprar.
+Separar en más servicios (uno por entidad) o sacar Raft a un "servicio de consenso" se
+descartó: aumenta las comunicaciones sin reducir el acoplamiento.
+
+**Cómo se comunican.** Con llamadas HTTP/REST síncronas y sin ciclos: Ventas consulta los
+productos a Catálogo (C1) y le pide a Inventario descontar o reintegrar unidades (C2 y C3),
+e Inventario verifica en Catálogo que el producto exista al dar de alta su stock (C4).
+Ningún servicio accede a la base de otro. Raft deja de ser parte del negocio y pasa a ser
+un módulo de infraestructura que cada servicio puede usar para replicarse en su propio
+cluster (Inventario es el primer candidato). En esta etapa no hay API Gateway.
+
+## Documentos
+
+| # | Sección | Documento | Autor/a |
+|---|---|---|---|
+| 1 | Inventario de la aplicación existente | [01-inventario.md](01-inventario.md) | Matías Porcari |
+| 2 | Identificación de responsabilidades | [02-responsabilidades.md](02-responsabilidades.md) | Santiago Vicente |
+| 3 | Acoplamientos detectados | [03-acoplamientos.md](03-acoplamientos.md) | Santiago Vicente |
+| 4 | Propuesta de microservicios (fichas + tabla) | [04-microservicios.md](04-microservicios.md) | Santiago Vicente |
+| 5 | Propiedad de los datos | [05-propiedad-datos.md](05-propiedad-datos.md) | Josué Ferreyra |
+| 6 | Comunicaciones y casos de uso | [06-comunicaciones.md](06-comunicaciones.md) | Josué Ferreyra |
+| 7 | Validación de límites | [07-validacion-limites.md](07-validacion-limites.md) | Josué Ferreyra |
+| 8 | Diagrama de arquitectura | [diagrama-arquitectura.md](diagrama-arquitectura.md) | Josué Ferreyra |
