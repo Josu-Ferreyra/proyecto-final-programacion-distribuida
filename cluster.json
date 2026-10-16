@@ -1,0 +1,8 @@
+{
+  "host": "127.0.0.1",
+  "nodos": {
+    "nodo1": { "apiHttpPort": 3001, "apiHttpsPort": 3441, "raftPort": 4001 },
+    "nodo2": { "apiHttpPort": 3002, "apiHttpsPort": 3442, "raftPort": 4002 },
+    "nodo3": { "apiHttpPort": 3003, "apiHttpsPort": 3443, "raftPort": 4003 }
+  }
+}
