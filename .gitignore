@@ -1,0 +1,34 @@
+# Dependencias (se reconstruyen con npm install)
+node_modules/
+
+# Variables de entorno y credenciales
+.env
+.env.*
+!.env.example
+
+# Certificados HTTPS locales (los genera cada uno con app-base/scripts/generar-certificado.ps1)
+certs/
+*.pfx
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Builds, cobertura y temporales
+dist/
+build/
+coverage/
+tmp/
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Herramientas de IA
+.claude/
+.agents/
