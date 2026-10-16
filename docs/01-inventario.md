@@ -83,3 +83,48 @@ Respuestas comunes a todas las escrituras:
   `RAFT_COMMIT_TIMEOUT_MS` (5 s por defecto).
 - Si la escritura sale bien, la respuesta trae los headers `X-Raft-Index` y `X-Raft-Term`.
   Todas las respuestas de la API externa llevan además `X-Raft-Nodo`.
+
+### API externa: diagnóstico del cluster y documentación
+
+| Funcionalidad / endpoint | Responsabilidad actual | Datos utilizados | Dependencias | Módulo / función |
+|---|---|---|---|---|
+| `GET /api/cluster/estado` | Mostrar el estado Raft del nodo: rol, término, voto, Leader conocido, `commitIndex`, `lastApplied`, contadores de heartbeats y, si es Leader, `nextIndex`/`matchIndex` de cada peer | L: estado en memoria del `RaftNode` | `RaftNode.estado` | `cluster.routes.js` (handler inline) |
+| `GET /api/cluster/log?desde=&hasta=` | Listar las entradas del log con su situación: `LOCAL`, `REPLICADA`, `RECIBIDA`, `COMMITTED` o `APLICADA` | L: log en memoria (copia de `raft_log`) | `RaftNode.entradasLog` | `cluster.routes.js` (handler inline) |
+| `GET /api-docs` · `GET /api-docs.json` | Swagger UI y especificación OpenAPI de la API externa | — | Anotaciones `@openapi` de `routes/*.js` | `app.js`, `docs/swagger.js` (`crearSpec`) |
+
+### RPC internos de Raft (`raft/raftApp.js`, puertos 4001–4003)
+
+Los usan los nodos entre sí. No son API de negocio: llamarlos a mano modifica el término,
+el voto o el log del nodo que los recibe.
+
+| Funcionalidad / endpoint | Responsabilidad actual | Datos utilizados | Dependencias | Módulo / función |
+|---|---|---|---|---|
+| `POST /raft/request-vote` | Un candidato pide el voto. Se concede si el término es válido, si el nodo no votó a otro en ese término y si el log del candidato está al menos tan actualizado como el propio. El voto se persiste antes de responder | L/E: `raft_estado` (`currentTerm`, `votedFor`) | `storage.guardarEstado` | `RaftNode.handleRequestVote` |
+| `POST /raft/append-entries` | Heartbeat del Leader y replicación de entradas: chequeo de continuidad (`prevLogIndex`/`prevLogTerm`), descarte de entradas en conflicto, avance del commit y aplicación a la State Machine | L/E: `raft_log` (agregar y truncar), `raft_estado` · E (indirecta): `productos` | `storage`, State Machine | `RaftNode.handleAppendEntries` |
+| `GET /raft/estado` | Igual que `/api/cluster/estado`, en el puerto interno | L: memoria del `RaftNode` | — | `RaftNode.estado` |
+| `GET /raft-docs` · `GET /raft-docs.json` | Swagger de los RPC internos | — | — | `raftApp.js` |
+
+### Procesos internos sin endpoint
+
+No los dispara un cliente, pero leen y escriben datos, así que también forman parte del
+inventario:
+
+| Proceso | Qué hace | Datos utilizados | Módulo / función |
+|---|---|---|---|
+| Arranque del nodo | Lee `cluster.json` y `.env`, conecta a Mongo, sincroniza índices, recupera el estado Raft, aplica las entradas que quedaron confirmadas sin aplicar y abre los puertos | L: `cluster.json`, `raft_estado`, `raft_log` · E: índices de `productos` y `raft_log`, `productos` (pendientes) | `server.js` (`main`), `RaftNode.iniciar` |
+| Election timeout | Si un follower no recibe noticias del Leader en 3–6 s, inicia una elección con un término nuevo | E: `raft_estado` | `RaftNode._alVencerTimeout`, `_pedirVoto` |
+| Heartbeats y replicación | El Leader envía `AppendEntries` cada `RAFT_HEARTBEAT_MS` (1 s) y retrocede `nextIndex` si un follower está atrasado | L: `raft_log` en memoria | `RaftNode._replicarATodos`, `_enviarAppendEntries` |
+| Avance del commit | Marca como confirmada una entrada cuando la tiene la mayoría | E: `raft_estado.commitIndex` | `RaftNode._avanzarCommit` |
+| Aplicación a la State Machine | Aplica en orden las entradas confirmadas. Es el **único** código que escribe en `productos` | E: `productos`, `raft_estado.lastApplied` | `RaftNode._aplicarPendientes` → `stateMachine.aplicar` |
+
+### Scripts de operación (`app-base/scripts/`)
+
+| Script | Qué hace | Cómo accede a los datos |
+|---|---|---|
+| `npm run seed` | Carga 3 productos de ejemplo | API externa: `POST /api/productos` al Leader |
+| `npm run estado` | Tabla con el estado de los 3 nodos (y su log con `--log`) | API externa: `/api/cluster/estado` y `/api/cluster/log` |
+| `npm run test:concurrencia` | Compras en paralelo contra el Leader y stock resultante en cada réplica | API externa: `POST /comprar` y `GET /api/productos/:id` |
+| `npm run comparar` | Verifica que las 3 bases tengan los mismos productos | ⚠️ **Directo a MongoDB**: lee `productos`, `raft_estado` y `raft_log` de las 3 bases |
+| `npm run limpiar -- --si` | Borra las 3 bases | ⚠️ **Directo a MongoDB**: `dropDatabase` |
+| `iniciar-cluster.ps1`, `detener-nodo.ps1`, `pausar-nodo.ps1` | Levantar, matar o congelar procesos de nodos | Leen `cluster.json` (puertos) |
+| `generar-certificado.ps1` | Crea el certificado HTTPS autofirmado (`certs/server.pfx`) | Archivo local |
