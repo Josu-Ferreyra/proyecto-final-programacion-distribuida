@@ -13,9 +13,8 @@ Repositorio: <https://github.com/Josu-Ferreyra/proyecto-final-programacion-distr
 | Nombre y apellido | Usuario GitHub | Parte del TP5 |
 |---|---|---|
 | Matías Porcari | [@matiasporcari](https://github.com/matiasporcari) | 1 · Repositorio, base e inventario |
-
-> Cada integrante se agrega a esta tabla con su propio Pull Request
-> (rama `docs/integrante-<nombre>`).
+| Santiago Vicente | [@santivicente](https://github.com/santivicente) | 2 · Responsabilidades, acoplamientos y propuesta de microservicios |
+| Josué Ferreyra | [@Josu-Ferreyra](https://github.com/Josu-Ferreyra) | 3 · Datos, comunicación y arquitectura |
 
 ## Punto de partida
 

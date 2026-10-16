@@ -9,10 +9,10 @@ Punto de partida: la API de productos del TP4 (cluster Raft de 3 nodos), ubicada
 | # | Sección | Documento | Autor/a |
 |---|---|---|---|
 | 1 | Inventario de la aplicación existente | [01-inventario.md](01-inventario.md) | Matías Porcari |
-| 2 | Identificación de responsabilidades | [02-responsabilidades.md](02-responsabilidades.md) | Integrante 2 |
-| 3 | Acoplamientos detectados | [03-acoplamientos.md](03-acoplamientos.md) | Integrante 2 |
-| 4 | Propuesta de microservicios (fichas + tabla) | [04-microservicios.md](04-microservicios.md) | Integrante 2 |
-| 5 | Propiedad de los datos | [05-propiedad-datos.md](05-propiedad-datos.md) | Integrante 3 |
-| 6 | Comunicaciones y casos de uso | [06-comunicaciones.md](06-comunicaciones.md) | Integrante 3 |
-| 7 | Validación de límites | [07-validacion-limites.md](07-validacion-limites.md) | Integrante 3 |
-| 8 | Diagrama de arquitectura | [diagrama-arquitectura.md](diagrama-arquitectura.md) | Integrante 3 |
+| 2 | Identificación de responsabilidades | [02-responsabilidades.md](02-responsabilidades.md) | Santiago Vicente |
+| 3 | Acoplamientos detectados | [03-acoplamientos.md](03-acoplamientos.md) | Santiago Vicente |
+| 4 | Propuesta de microservicios (fichas + tabla) | [04-microservicios.md](04-microservicios.md) | Santiago Vicente |
+| 5 | Propiedad de los datos | [05-propiedad-datos.md](05-propiedad-datos.md) | Josué Ferreyra |
+| 6 | Comunicaciones y casos de uso | [06-comunicaciones.md](06-comunicaciones.md) | Josué Ferreyra |
+| 7 | Validación de límites | [07-validacion-limites.md](07-validacion-limites.md) | Josué Ferreyra |
+| 8 | Diagrama de arquitectura | [diagrama-arquitectura.md](diagrama-arquitectura.md) | Josué Ferreyra |
