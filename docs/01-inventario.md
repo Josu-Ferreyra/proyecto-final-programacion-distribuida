@@ -181,3 +181,115 @@ la respuesta que se obtuvo al violar la regla.
 | `raft_estado` (Mongo, una por nodo) | `storage.cargar` · `scripts/comparar-bases.js` | `storage.guardarEstado`, llamado por `RaftNode` (término, voto, `commitIndex`, `lastApplied`) |
 | `lock:producto:<id>` (Redis) | `lib/lock.releaseLock` (compara el dueño dentro del script Lua) | `lib/lock.acquireLock` (`SET NX PX`) y `lib/lock.releaseLock` (`DEL`) |
 | `cluster.json` (archivo) | `config/cluster.js`, `scripts/lib/cliente-cluster.js`, `detener-nodo.ps1`, `pausar-nodo.ps1` | Nadie (se edita a mano) |
+
+## 1.5 Dependencias entre funcionalidades
+
+```mermaid
+flowchart LR
+    subgraph API["API externa (cada nodo)"]
+        LST["GET /productos<br/>GET /productos/:id"]
+        ALTA["POST /productos"]
+        MOD["PUT /productos/:id"]
+        BAJA["DELETE /productos/:id"]
+        COMP["POST /productos/:id/comprar"]
+        DIAG["GET /cluster/estado<br/>GET /cluster/log"]
+    end
+
+    SL["soloLeader"]
+    RAFT["RaftNode<br/>(log, replicación, commit)"]
+    SM["State Machine"]
+    PROD[("productos")]
+    RLOG[("raft_log<br/>raft_estado")]
+    LOCK[("Redis<br/>lock:producto:id")]
+
+    LST --> PROD
+    ALTA & MOD & BAJA & COMP --> SL --> RAFT
+    ALTA & MOD & BAJA -. "validación previa<br/>(unicidad, existencia)" .-> PROD
+    COMP --> LOCK
+    COMP -. "lee stock" .-> PROD
+    RAFT --> RLOG
+    RAFT --> SM --> PROD
+    DIAG --> RAFT
+```
+
+- **Alta, modificación y baja** dependen de: el rol del nodo (`soloLeader`), una lectura
+  previa de `productos` (unicidad o existencia), el protocolo Raft (replicación y commit
+  por mayoría) y la State Machine, que es la que escribe.
+- **Comprar** depende de todo lo anterior y además de **Redis**. Por dentro reutiliza la
+  modificación: `stateMachine.comprar` llama a `stateMachine.actualizar` con el stock
+  nuevo.
+- **Las lecturas** no pasan por Raft, pero dependen de que la State Machine del nodo que
+  responde ya haya aplicado las últimas entradas. Un follower puede estar un instante
+  atrasado.
+- **El diagnóstico** depende solo del estado en memoria del `RaftNode`.
+- **El arranque** sigue este orden: `cluster.json` → logger → MongoDB → recuperación del
+  estado Raft → aplicación de pendientes → puertos HTTP → timers.
+- **Los scripts** dependen de la API externa (`seed`, `estado`, `test:concurrencia`) o
+  directamente de MongoDB (`comparar`, `limpiar`).
+
+## 1.6 Información compartida por diferentes partes
+
+| Dato | Quién lo usa | Comentario |
+|---|---|---|
+| `productos.stock` | Lo **escriben** el alta, el `PUT` (ajuste manual) y la compra. Lo **leen** los `GET` y la compra | El catálogo y el inventario comparten el mismo campo y el mismo documento |
+| `productos.nombre` y `productos.precio` | Alta, modificación y listados. La compra devuelve el `nombre` en su respuesta | Datos de catálogo que también aparecen en la respuesta de la compra |
+| `CATEGORIAS` | Schema `Producto` y filtro de `listarProductos`. Está **repetida a mano** en `docs/swagger.js` y en las anotaciones `@openapi` de `productos.routes.js` | Si se agrega una categoría hay que cambiarla en 3 lugares |
+| Rol del nodo y Leader conocido | `soloLeader`, `productos.controller` (vía `getRaft()`), `cluster.routes`, los scripts | Se accede a través del singleton global `raft/instancia.js` |
+| Formato del comando Raft (`tipo`, `id`, `datos`, `cambios`, `cantidad`, `stockLeido`, `stockNuevo`, `timestamp`) | Lo **produce** `productos.controller`, lo **consume** `stateMachine` y lo **interpreta** `scripts/estado-cluster.js` | Es un contrato implícito, sin schema: el campo `comando` del log es de tipo libre (`Mixed`) |
+| Conexión a MongoDB | Modelo `Producto` y modelos `RaftEstado`/`RaftEntrada` | Una sola conexión global de Mongoose y una sola base por nodo |
+| Variables de entorno (`.env`) | Todos los módulos y los scripts | Configuración común a los 3 nodos |
+| `mensajeDeValidacion` | `productos.controller` y `stateMachine` | Misma función copiada en los dos archivos |
+
+## 1.7 Observaciones para el análisis (⚠️)
+
+Insumo para la Parte 2 (responsabilidades y acoplamientos):
+
+1. ⚠️ **Catálogo e inventario mezclados.** Precio, nombre y categoría (catálogo) viven en
+   el mismo documento que el stock (inventario). Un mismo `PUT` puede cambiar el precio y
+   el stock a la vez. Es el candidato más claro a separarse en dos responsabilidades.
+2. ⚠️ **La compra no tiene entidad propia.** No existe una colección de ventas ni de
+   pedidos: comprar solo descuenta stock, y el único rastro queda en `raft_log`. Si se
+   propone un servicio de ventas o pedidos, va a necesitar sus propios datos.
+3. ⚠️ **El controlador de productos concentra demasiado.** `productos.controller.js` hace
+   el CRUD del catálogo, el ajuste de stock y las compras, y además coordina Redis y Raft.
+4. ⚠️ **Dos caminos para modificar el stock con distinta protección.** La compra toma el
+   lock de Redis, pero `PUT /productos/:id` con `stock` no lo toma. Si un `PUT` de stock
+   se confirma mientras una compra espera dentro del lock, la compra escribe después el
+   `stockNuevo` que calculó con el valor viejo y el ajuste manual se pierde
+   (*lost update*). Además, la State Machine no vuelve a validar el stock: confía en el
+   valor que calculó el controlador.
+5. ⚠️ **Datos de negocio y datos del protocolo en la misma base.** `productos`,
+   `raft_log` y `raft_estado` comparten la base y la conexión de cada nodo.
+6. ⚠️ **Replicación de todo o nada.** Hay un único log Raft y una única State Machine con
+   un `switch` por tipo de comando. Cualquier entidad nueva tendría que sumarse a ese mismo
+   log y a ese mismo `switch`: hoy no se puede replicar una parte del sistema por separado.
+7. ⚠️ **Contrato del comando implícito.** El formato del comando no está definido en
+   ningún lado; lo conocen por separado el controlador, la State Machine y
+   `scripts/estado-cluster.js`. Si uno cambia sin los otros, se rompe en silencio.
+8. ⚠️ **Lógica duplicada.** `mensajeDeValidacion` está copiada en dos archivos, la lista
+   de categorías en tres, y las validaciones se ejecutan dos veces (controlador y State
+   Machine, regla R18).
+9. ⚠️ **Dependencia global del protocolo.** Los controladores obtienen el nodo Raft con
+   `getRaft()` (singleton de `raft/instancia.js`) en lugar de recibirlo como parámetro: la
+   lógica de negocio queda atada a la infraestructura de consenso.
+10. ⚠️ **Scripts que saltean la API.** `comparar-bases.js` y `limpiar-bases.js` leen y
+    borran directo en MongoDB. Si cada servicio pasa a ser dueño de sus datos, esto deja
+    de ser válido.
+11. ⚠️ **Lecturas posiblemente desactualizadas.** Los `GET` responden con la base local:
+    un cliente que escribe en el Leader y lee de un follower puede no ver su propio cambio
+    por un instante.
+12. ⚠️ **Bug: el filtro `nombreContiene` se usa como expresión regular sin escapar.**
+    `GET /api/productos?nombreContiene=(` responde **500** (MongoDB rechaza la expresión
+    regular inválida). Lo esperable sería escapar el texto o responder 400.
+13. ⚠️ **Redis solo es necesario para comprar.** Si Redis no está disponible, las compras
+    no pueden ejecutarse, pero el resto de la API sigue funcionando. Es una dependencia
+    externa que hoy afecta a una sola funcionalidad.
+
+### Resumen
+
+- **Endpoints:** 8 en la API externa (6 de negocio y 2 de diagnóstico), más Swagger, y
+  3 RPC internos de Raft.
+- **Entidades:** 1 de negocio (`Producto`), más el log y el estado de Raft y el lock de
+  Redis.
+- **Reglas de negocio y validaciones:** 20 (R1–R20).
+- **Observaciones para la Parte 2:** 13. Las más importantes son la 1, la 2, la 4 y la 6.
