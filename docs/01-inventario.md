@@ -128,3 +128,56 @@ inventario:
 | `npm run limpiar -- --si` | Borra las 3 bases | ⚠️ **Directo a MongoDB**: `dropDatabase` |
 | `iniciar-cluster.ps1`, `detener-nodo.ps1`, `pausar-nodo.ps1` | Levantar, matar o congelar procesos de nodos | Leen `cluster.json` (puertos) |
 | `generar-certificado.ps1` | Crea el certificado HTTPS autofirmado (`certs/server.pfx`) | Archivo local |
+
+## 1.3 Reglas de negocio y validaciones
+
+Todas fueron verificadas contra el cluster local: el código HTTP de la última columna es
+la respuesta que se obtuvo al violar la regla.
+
+| # | Regla | Dónde está implementada | Endpoints que la usan | Si no se cumple |
+|---|---|---|---|---|
+| R1 | El nombre es obligatorio y no puede quedar vacío | Schema `Producto` (`required`, `minlength`) | `POST`, `PUT` | 400 |
+| R2 | El nombre se guarda sin espacios al inicio ni al final | Schema `Producto` (`trim`) | `POST`, `PUT` | — (se normaliza) |
+| R3 | El nombre es **único**. La comparación es exacta, después del `trim`, y distingue mayúsculas | Controlador (`Producto.exists` en `crearProducto` y `actualizarProducto`) **y** índice único de Mongo, que la State Machine traduce a 409 | `POST`, `PUT` | 409 |
+| R4 | El precio es obligatorio y mayor que 0 (mínimo 0.01) | Schema `Producto` (`required`, `min`) | `POST`, `PUT` | 400 |
+| R5 | El stock es obligatorio, entero y no negativo | Schema `Producto` (`required`, `min: 0`, `Number.isInteger`) | `POST`, `PUT` | 400 |
+| R6 | La categoría debe ser `periferico`, `monitor`, `accesorio` u `otro`; si no se envía, vale `otro` | Schema `Producto` (`enum`, `default`) | `POST`, `PUT` | 400 |
+| R7 | El filtro `categoria` del listado debe ser una categoría válida, y `nombreContiene` debe ser texto | `listarProductos` | `GET /api/productos` | 400 |
+| R8 | El `id` de la URL debe ser un ObjectId de MongoDB válido | `esIdValido` en el controlador | `GET /:id`, `PUT`, `DELETE`, `comprar` | 400 |
+| R9 | El producto tiene que existir | Controlador (verificación previa) y State Machine (al aplicar) | `GET /:id`, `PUT`, `DELETE`, `comprar` | 404 |
+| R10 | Un `PUT` debe traer al menos uno de los campos `nombre`, `precio`, `stock` o `categoria`; los que no vienen no se modifican | `actualizarProducto` | `PUT` | 400 |
+| R11 | La cantidad a comprar es un entero mayor que 0 | `esCantidadValida` en el controlador | `comprar` | 400 |
+| R12 | No se puede comprar más que el stock disponible | `comprarProducto` (dentro del lock). La State Machine **no** lo vuelve a verificar: aplica el `stockNuevo` que calculó el Leader | `comprar` | 409 |
+| R13 | Dos compras del mismo producto no pueden ejecutarse a la vez: la segunda se rechaza al instante, sin reintento. El lock expira solo a los `LOCK_TTL_MS` (10 s) y solo lo libera quien lo tomó (script Lua atómico) | `lib/lock.js` + `comprarProducto` | `comprar` | 409 |
+| R14 | Las escrituras solo las acepta el Leader | Middleware `soloLeader` | `POST`, `PUT`, `DELETE`, `comprar` | 421 (o 503 si no hay Leader) |
+| R15 | Una escritura solo se aplica si una mayoría de nodos (2 de 3) la confirma dentro de `RAFT_COMMIT_TIMEOUT_MS` | `RaftNode.proponer` + `responderErrorRaft` | `POST`, `PUT`, `DELETE`, `comprar` | 503 |
+| R16 | Todo lo no determinístico (el `_id`, las fechas y el stock resultante de una compra) lo fija el Leader dentro del comando, para que las 3 réplicas queden iguales | Controlador (arma el comando) + State Machine (lo usa tal cual) | `POST`, `PUT`, `DELETE`, `comprar` | — |
+| R17 | Cada modificación suma 1 a `version`, y aplicar dos veces la misma entrada no cambia nada (idempotencia por `ultimoIndiceRaft`) | `stateMachine.crear` / `actualizar` | `POST`, `PUT`, `comprar` | — |
+| R18 | Los datos se validan dos veces: el controlador valida antes de proponer (para no llenar el log de comandos que van a fallar) y la State Machine vuelve a validar al aplicar (es la fuente de verdad) | Controlador + `stateMachine.erroresDeNegocio` | `POST`, `PUT` | 400 / 409 |
+| R19 | El cuerpo de la petición tiene que ser JSON válido | Manejador de errores de `app.js` | Todos los que reciben cuerpo | 400 |
+| R20 | `desde` y `hasta` deben ser enteros mayores o iguales a 1 | `cluster.routes.js` | `GET /api/cluster/log` | 400 |
+
+## 1.4 Acceso a persistencia
+
+- **Un servidor MongoDB y una base por nodo** (`<MONGODB_DB_PREFIX><nodo>`, por ejemplo
+  `tp4_nodo1`). Cada nodo escribe **solo** en su propia base; las 3 bases quedan iguales
+  porque aplican los mismos comandos en el mismo orden.
+- **Una única conexión compartida:** `config/db.js` abre la conexión global de Mongoose,
+  y la usan tanto el modelo de negocio (`Producto`) como la persistencia del protocolo
+  (`RaftEstado` y `RaftEntrada` en `raft/storage.js`).
+- **ORM:** Mongoose. Los modelos son `Producto` (`models/producto.model.js`),
+  `RaftEstado` y `RaftEntrada` (`raft/storage.js`).
+- **Un único escritor del negocio:** solo la State Machine escribe en `productos`. Los
+  controladores únicamente leen y proponen comandos.
+- **Redis/Memurai:** solo guarda las claves del lock de compra. Los nodos no comparten
+  ningún otro dato a través de Redis.
+- **Archivos:** `cluster.json` (topología), `certs/server.pfx` (certificado) y
+  `logs/<nodo>/` (logs de Winston).
+
+| Tabla / colección | Módulos que la LEEN | Módulos que la ESCRIBEN |
+|---|---|---|
+| `productos` (Mongo, una por nodo) | `productos.controller` (`listarProductos`, `obtenerProductoPorId`; unicidad en `crearProducto` y `actualizarProducto`; existencia en `eliminarProducto`; stock en `comprarProducto`) · `stateMachine` (antes de modificar) · `scripts/comparar-bases.js` | `stateMachine` (`crear`, `actualizar`, `eliminar`, `comprar`): es el único escritor del negocio · `scripts/limpiar-bases.js` (borra la base) |
+| `raft_log` (Mongo, una por nodo) | `storage.cargar` (al arrancar; después el log vive en memoria del `RaftNode`) · `scripts/comparar-bases.js` | `storage.agregarEntradas` y `storage.truncarDesde`, llamados por `RaftNode` (`proponer`, `_convertirseEnLeader`, `handleAppendEntries`) |
+| `raft_estado` (Mongo, una por nodo) | `storage.cargar` · `scripts/comparar-bases.js` | `storage.guardarEstado`, llamado por `RaftNode` (término, voto, `commitIndex`, `lastApplied`) |
+| `lock:producto:<id>` (Redis) | `lib/lock.releaseLock` (compara el dueño dentro del script Lua) | `lib/lock.acquireLock` (`SET NX PX`) y `lib/lock.releaseLock` (`DEL`) |
+| `cluster.json` (archivo) | `config/cluster.js`, `scripts/lib/cliente-cluster.js`, `detener-nodo.ps1`, `pausar-nodo.ps1` | Nadie (se edita a mano) |
