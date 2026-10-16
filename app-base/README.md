@@ -1,6 +1,11 @@
 # TP N°4 - Consenso distribuido con Raft (cluster de 3 nodos)
 
-Continúa el [TP3](../Tp3) (API REST de `productos` con HTTPS, MongoDB/Mongoose, Winston,
+> **Aplicación base del TP5.** Esta carpeta contiene, sin cambios en el código, el TP4 de
+> Santiago Vicente que el grupo eligió como punto de partida (ver el
+> [README principal](../README.md)). Todos los comandos de este documento se ejecutan
+> **dentro de `app-base/`**.
+
+Continúa el TP3 (API REST de `productos` con HTTPS, MongoDB/Mongoose, Winston,
 Swagger y lock distribuido con Redis/Memurai). Ahora la misma aplicación corre como
 **tres réplicas independientes** que se ponen de acuerdo con una implementación
 educativa y simplificada de **Raft**: eligen un Leader por mayoría, replican las
@@ -8,9 +13,9 @@ escrituras en un log ordenado, las confirman (commit) cuando una mayoría las ti
 recién ahí las aplican a la base MongoDB de cada nodo.
 
 Las decisiones de diseño, las preguntas de control, los resultados de las pruebas y la
-comparación con Paxos están en el informe
-[`Informe_TP4_Vicente_Santiago.pdf`](./Informe_TP4_Vicente_Santiago.pdf). Las salidas
-completas de las pruebas están en [`evidencia/`](./evidencia).
+comparación con Paxos están en el informe `Informe_TP4_Vicente_Santiago.pdf`, y las
+salidas completas de las pruebas en la carpeta `evidencia/`. Ambos forman parte de la
+entrega del TP4 y no se incluyen en este repositorio.
 
 ## Arquitectura en una imagen
 
@@ -220,7 +225,7 @@ adopta el término y Leader vigentes y recupera las entradas que se perdió;
 **F. Sin quorum 1/3**: detener los dos followers y hacer un `POST` al Leader → a los 5 s
 responde `503`; `GET /api/cluster/log` muestra la entrada como `LOCAL` y el producto no
 existe. (Al volver los otros nodos con otro Leader, esa entrada se descarta: ver
-`evidencia/10-...`.)
+`evidencia/10-...` en la entrega del TP4.)
 
 **H. Restart completo**: `npm run estado -- --log`, detener los tres, volver a
 levantarlos (sin limpiar) y repetir → el término no baja y el log y los productos
@@ -264,5 +269,5 @@ src/lib/logger.js                       -> Winston por nodo
 src/lib/lock.js, redisClient.js         -> lock distribuido del TP2
 src/docs/swagger.js                     -> spec OpenAPI de la API externa
 scripts/                                -> ver tabla de scripts
-evidencia/                              -> salidas de las pruebas A–I e hitos
+.env.example                            -> plantilla de variables de entorno (copiar a .env)
 ```
