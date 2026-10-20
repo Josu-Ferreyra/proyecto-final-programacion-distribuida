@@ -1,7 +1,10 @@
-# Arquitectura propuesta — TP5
+# Arquitectura — TP5 y TP6
 
 Punto de partida: la API de productos del TP4 (cluster Raft de 3 nodos), ubicada en
-[`app-base/`](../app-base/) y marcada con el tag `tp5-base`.
+[`app-base/`](../app-base/) y marcada con el tag `tp5-base`. En el TP5 se analizó y propuso
+la división en microservicios (tag `tp5-entrega`); en el TP6 se implementó en
+[`services/`](../services/) y se ejecuta con Docker Compose. Los cambios que hubo que hacer
+al implementar están al final, en [TP6: cambios respecto del TP5](#tp6-cambios-respecto-del-tp5).
 
 ## Resumen de la propuesta
 
@@ -32,6 +35,8 @@ cluster (Inventario es el primer candidato). En esta etapa no hay API Gateway.
 
 ## Documentos
 
+**TP5**
+
 | # | Sección | Documento | Autor/a |
 |---|---|---|---|
 | 1 | Inventario de la aplicación existente | [01-inventario.md](01-inventario.md) | Matías Porcari |
@@ -41,4 +46,36 @@ cluster (Inventario es el primer candidato). En esta etapa no hay API Gateway.
 | 5 | Propiedad de los datos | [05-propiedad-datos.md](05-propiedad-datos.md) | Josué Ferreyra |
 | 6 | Comunicaciones y casos de uso | [06-comunicaciones.md](06-comunicaciones.md) | Josué Ferreyra |
 | 7 | Validación de límites | [07-validacion-limites.md](07-validacion-limites.md) | Josué Ferreyra |
-| 8 | Diagrama de arquitectura | [diagrama-arquitectura.md](diagrama-arquitectura.md) | Josué Ferreyra |
+| 8 | Diagrama de arquitectura (lógico y de despliegue) | [diagrama-arquitectura.md](diagrama-arquitectura.md) | Josué Ferreyra |
+
+**TP6**
+
+| # | Sección | Documento | Autor/a |
+|---|---|---|---|
+| 8 | Ratificación de la arquitectura y decisiones D1–D7 | [08-ratificacion-tp6.md](08-ratificacion-tp6.md) | Josué Ferreyra |
+| 9 | Ejecución con Docker Compose: red, puertos y persistencia | [09-ejecucion-docker.md](09-ejecucion-docker.md) | Josué Ferreyra |
+| 10 | Inventario replicado | [10-inventario-replicado.md](10-inventario-replicado.md) | Santiago Vicente |
+| 11 | Configuración por entorno | [11-configuracion-por-entorno.md](11-configuracion-por-entorno.md) | Santiago Vicente |
+| 12 | Comunicación entre servicios y fallos | [12-comunicacion-y-fallos.md](12-comunicacion-y-fallos.md) | Matías Porcari |
+| 13 | Pruebas y evidencias | [13-pruebas.md](13-pruebas.md) | Josué Ferreyra |
+
+## TP6: cambios respecto del TP5
+
+Al implementar aparecieron huecos que el TP5 había dejado abiertos. Se resolvieron en la
+ratificación ([`08-ratificacion-tp6.md`](08-ratificacion-tp6.md) §8.4, decisiones D1–D7) y
+se listan todas, aunque ninguna rompe un contrato: el TP pide documentar toda modificación
+respecto del TP5. Las responsabilidades, la propiedad de los datos y los contratos C1–C4 no
+cambiaron.
+
+| Cambio | Motivo concreto | Impacto | Decisión |
+|---|---|---|---|
+| Los followers de Inventario reenvían las escrituras al Leader, y los 3 nodos comparten el alias DNS `inventario-service` | Si Ventas apuntaba a un follower, todas las compras fallaban con el cluster sano | Ningún contrato cambia; Ventas sigue sin saber que Inventario usa Raft. `421`/`503` solo durante una elección | D1 |
+| Las bases de los 3 nodos de Inventario están en un solo contenedor `inventario-db` (`inventario_nodo1..3`) | Igual que en el TP4; 3 contenedores Mongo sumaban infraestructura sin cambiar contratos | Ninguno: las tres bases son del mismo servicio | D2 |
+| `RAFT_COMMIT_TIMEOUT_MS=2500` (antes 5000) | Con 5 s, un descuento podía confirmarse después de que Ventas (3 s) se rindió y mandó la compensación | Inventario responde `503` antes del timeout de Ventas | D3 |
+| Los endpoints propuestos se implementan sin `/api` (salvo `/api/cluster/*`) | Que fichas, Swagger y código coincidan | Las URLs del TP4 (`/api/productos`) dejan de existir | D4 |
+| En Compose solo HTTP; el HTTPS del TP4 queda en `app-base/` | El TP6 no exige TLS entre contenedores | Sin certificados en las imágenes | D5 |
+| Se mantiene C4 (Inventario → Catálogo al dar de alta stock) | El TP5 la dejó con ⚠️ y una alternativa | Ninguno respecto de la ficha | D6 |
+| Ventas guarda la compra como `FALLIDA` con `reintegroPendiente: true` si falla la compensación | Si C2 vencía por timeout y C3 también fallaba, la compra no se guardaba y no había dónde encolar el reintegro | Estado nuevo en Ventas, reintentado por el proceso de 30 s de `CANCELACION_PENDIENTE` | D7 |
+| Los errores agregan el campo `servicio` (`{ error, servicio }`) | Saber qué servicio generó un error cuando una respuesta cruza servicios | El formato de `app-base/` se mantiene; solo se agrega un campo | Convención §8.3 |
+| `POST` y `PUT /productos` rechazan con `400` cualquier campo que no sea `nombre`, `precio` o `categoria`, no solo `stock` | Que un campo de otro servicio (o mal escrito) no se ignore en silencio | Más estricto que la ficha, que solo menciona `stock` | Implementación de Catálogo |
+
