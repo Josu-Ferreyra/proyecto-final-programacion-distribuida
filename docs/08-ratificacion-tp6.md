@@ -171,3 +171,32 @@ estado nuevo de Ventas: se registra como cambio respecto del TP5.
 - [ ] D1–D7 confirmadas por los tres y registradas en este acta con su motivo.
 - [ ] Convenciones del §8.3 congeladas.
 - [ ] Acciones derivadas del TP5 (§7.3) marcadas como resueltas o con el PR que las resuelve.
+
+## 8.6 Acciones derivadas del TP5
+
+Las acciones de [`07-validacion-limites.md`](./07-validacion-limites.md#73-acciones-derivadas)
+§7.3 habían quedado con PR _pendiente_. Al revisarlas contra las fichas, todas ya estaban
+incorporadas por el PR #3 (`04-microservicios.md` §4.5); solo faltaba registrarlo.
+
+| Acción derivada | Resultado |
+|---|---|
+| `GET /productos?ids=…` en la ficha de Catálogo | Resuelta en #3 |
+| `GET /categorias` en la ficha de Catálogo | Resuelta en #3 |
+| `DELETE` como baja lógica | Resuelta en #3 |
+| `stock` fuera de Catálogo; ajuste en `PUT /stock/:productoId` | Resuelta en #3 |
+| Lock Redis como detalle interno de Inventario | Resuelta en #3 |
+| Dependencia C4 en la ficha de Inventario | Resuelta en #3 y confirmada por D6 |
+| ☐ del control de coherencia del diagrama | Resuelta en esta rama |
+
+**Control de coherencia del diagrama** (contra las fichas §4.2):
+
+| Control | Verificación |
+|---|---|
+| Servicio y frase de responsabilidad | Las tres frases del diagrama resumen la "Responsabilidad principal" de su ficha |
+| Bases y datos | Los datos de cada cilindro son los "Datos propios" de su ficha (Catálogo sin `stock`; el lock dentro de Inventario) |
+| Sentido de las flechas | Ventas → Catálogo (C1), Ventas → Inventario (C2, C3) e Inventario → Catálogo (C4): coinciden con "Dependencias" de cada ficha; Catálogo no tiene flechas salientes |
+| Flechas desde el cliente | Cada endpoint público de las fichas aparece en una flecha; `POST /descuentos` y `DELETE /descuentos/:referencia` no salen del cliente porque los usa solo Ventas |
+
+Con esto la tabla de [`diagrama-arquitectura.md`](./diagrama-arquitectura.md#control-de-coherencia)
+queda completa. El diagrama con los nodos, puertos y la red de Docker se actualiza en la
+Parte 1 junto con `compose.yml`.

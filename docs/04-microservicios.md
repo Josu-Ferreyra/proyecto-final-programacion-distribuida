@@ -127,20 +127,24 @@ solo. La dependencia C4 es la más discutible y está analizada en
 Cada endpoint del sistema actual tiene destino. Esta tabla es la guía para migrar el código
 en el TP6.
 
-| Endpoint actual (TP4) | Servicio destino | Endpoint propuesto | Cambio |
-|---|---|---|---|
-| `GET /api/productos` | Catálogo | `GET /productos` | Ya no devuelve `stock`. Para mostrar disponibilidad, el cliente consulta además `GET /stock?productoIds=…`. |
-| `GET /api/productos/:id` | Catálogo | `GET /productos/:id` | Ya no devuelve `stock`. |
-| `POST /api/productos` | Catálogo + Inventario | `POST /productos` (sin `stock`) y luego `PUT /stock/:productoId` `{ cantidad }` | Se separa en dos pedidos del cliente. Mientras no se carga el stock, el producto existe con 0 disponibles: no se vende de más. |
-| `PUT /api/productos/:id` | Catálogo (nombre, precio, categoría) / Inventario (stock) | `PUT /productos/:id` · `PUT /stock/:productoId` | `PUT /productos/:id` rechaza `stock`. El ajuste de stock pasa por el lock de Inventario y queda como movimiento (Caso 2). |
-| `DELETE /api/productos/:id` | Catálogo | `DELETE /productos/:id` | Pasa a baja lógica (`activo = false`). No borra stock ni compras; Ventas no vende productos inactivos. |
-| `POST /api/productos/:id/comprar` | Ventas (+ Inventario) | `POST /compras` `{ items }` → C2 `POST /descuentos` | Pasa a crear una compra registrada, de uno o varios productos. El descuento lo decide Inventario. |
-| — | Catálogo | `GET /productos?ids=…`, `GET /categorias` | Nuevos. |
-| — | Inventario | `GET /stock?productoIds=…`, `DELETE /descuentos/:referencia`, `GET /movimientos?productoId=…` | Nuevos. |
-| — | Ventas | `GET /compras/:id`, `PATCH /compras/:id/cancelar` | Nuevos. |
-| `GET /api/cluster/estado`, `GET /api/cluster/log` | Cada servicio replicado | Mismos paths, sobre su propio cluster | Diagnóstico, no negocio. |
-| `POST /raft/request-vote`, `POST /raft/append-entries`, `GET /raft/estado` | Módulo Raft dentro de cada servicio replicado | Mismos paths, puerto interno | Infraestructura; no forman parte de la API pública. |
-| `/api-docs` | Cada servicio | `/api-docs` | Cada servicio documenta solo su propia API. |
+Las columnas **Responsable** y **Estado** se agregaron en la ratificación del TP6
+([`08-ratificacion-tp6.md`](./08-ratificacion-tp6.md)). Cada responsable actualiza el estado
+(`pendiente` → `implementado` → `probado`) en los PRs de su servicio.
+
+| Endpoint actual (TP4) | Servicio destino | Endpoint propuesto | Cambio | Responsable | Estado |
+|---|---|---|---|---|---|
+| `GET /api/productos` | Catálogo | `GET /productos` | Ya no devuelve `stock`. Para mostrar disponibilidad, el cliente consulta además `GET /stock?productoIds=…`. | Ferreyra | pendiente |
+| `GET /api/productos/:id` | Catálogo | `GET /productos/:id` | Ya no devuelve `stock`. | Ferreyra | pendiente |
+| `POST /api/productos` | Catálogo + Inventario | `POST /productos` (sin `stock`) y luego `PUT /stock/:productoId` `{ cantidad }` | Se separa en dos pedidos del cliente. Mientras no se carga el stock, el producto existe con 0 disponibles: no se vende de más. | Ferreyra (producto) · Vicente (stock) | pendiente |
+| `PUT /api/productos/:id` | Catálogo (nombre, precio, categoría) / Inventario (stock) | `PUT /productos/:id` · `PUT /stock/:productoId` | `PUT /productos/:id` rechaza `stock`. El ajuste de stock pasa por el lock de Inventario y queda como movimiento (Caso 2). | Ferreyra (producto) · Vicente (stock) | pendiente |
+| `DELETE /api/productos/:id` | Catálogo | `DELETE /productos/:id` | Pasa a baja lógica (`activo = false`). No borra stock ni compras; Ventas no vende productos inactivos. | Ferreyra | pendiente |
+| `POST /api/productos/:id/comprar` | Ventas (+ Inventario) | `POST /compras` `{ items }` → C2 `POST /descuentos` | Pasa a crear una compra registrada, de uno o varios productos. El descuento lo decide Inventario. | Porcari (+ Vicente) | pendiente |
+| — | Catálogo | `GET /productos?ids=…`, `GET /categorias` | Nuevos. | Ferreyra | pendiente |
+| — | Inventario | `GET /stock?productoIds=…`, `DELETE /descuentos/:referencia`, `GET /movimientos?productoId=…` | Nuevos. | Vicente | pendiente |
+| — | Ventas | `GET /compras/:id`, `PATCH /compras/:id/cancelar` | Nuevos. | Porcari | pendiente |
+| `GET /api/cluster/estado`, `GET /api/cluster/log` | Cada servicio replicado | Mismos paths, sobre su propio cluster | Diagnóstico, no negocio. | Vicente | pendiente |
+| `POST /raft/request-vote`, `POST /raft/append-entries`, `GET /raft/estado` | Módulo Raft dentro de cada servicio replicado | Mismos paths, puerto interno | Infraestructura; no forman parte de la API pública. | Vicente | pendiente |
+| `/api-docs` | Cada servicio | `/api-docs` | Cada servicio documenta solo su propia API. | Los tres, cada uno el suyo | pendiente |
 
 ## 4.5 Coherencia con la Parte 3
 
