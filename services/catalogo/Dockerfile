@@ -13,4 +13,6 @@ COPY src ./src
 
 EXPOSE 3100
 USER node
-CMD ["npm", "start"]
+# node directo (no "npm start"): recibe SIGTERM de "docker stop" y cierra la conexión a
+# Mongo, y no busca un .env que en la imagen no existe.
+CMD ["node", "src/server.js"]
