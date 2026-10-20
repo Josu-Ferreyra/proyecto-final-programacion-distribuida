@@ -42,7 +42,7 @@ const spec = {
     '/productos': {
       get: {
         tags: ['Productos'],
-        summary: 'Listar y buscar productos',
+        summary: 'Listar, buscar o consultar varios productos por id (C1)',
         description: 'Incluye los productos dados de baja, con `activo: false`.',
         parameters: [
           {
@@ -56,6 +56,15 @@ const spec = {
             name: 'categoria',
             schema: { type: 'string', enum: CATEGORIAS },
             description: 'Categoría exacta',
+          },
+          {
+            in: 'query',
+            name: 'ids',
+            schema: { type: 'string' },
+            example: '65f1a2b3c4d5e6f7a8b9c0d1,65f1a2b3c4d5e6f7a8b9c0d2',
+            description:
+              'Contrato **C1** (lo usa Ventas): ids separados por coma. Devuelve los que existen, activos o no; ' +
+              'los ids inexistentes o mal formados no aparecen en la respuesta.',
           },
         ],
         responses: {
@@ -88,7 +97,7 @@ const spec = {
     '/productos/{id}': {
       get: {
         tags: ['Productos'],
-        summary: 'Consultar un producto',
+        summary: 'Consultar un producto (contrato C4, lo usa Inventario)',
         parameters: [parametroId],
         responses: {
           200: { description: 'Producto encontrado', content: json(ref('Producto')) },

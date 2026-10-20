@@ -61,7 +61,18 @@ async function guardar(producto) {
   }
 }
 
-async function listar({ nombreContiene, categoria }) {
+// ?ids=a,b,c (o ?ids=a&ids=b) → lista de ids sin repetir. Contrato C1: un id mal
+// formado se trata igual que uno inexistente (no aparece), así que se descarta acá.
+function separarIds(ids) {
+  const valores = Array.isArray(ids) ? ids : [ids];
+  if (!valores.every((v) => typeof v === 'string')) {
+    throw solicitudInvalida('El parámetro "ids" debe ser una lista de ids separados por coma');
+  }
+  const lista = valores.flatMap((v) => v.split(',')).map((v) => v.trim());
+  return [...new Set(lista)].filter(esIdValido);
+}
+
+async function listar({ nombreContiene, categoria, ids }) {
   if (nombreContiene !== undefined && typeof nombreContiene !== 'string') {
     throw solicitudInvalida('El parámetro "nombreContiene" debe ser texto');
   }
@@ -72,6 +83,7 @@ async function listar({ nombreContiene, categoria }) {
   const filtro = {};
   if (nombreContiene) filtro.nombre = { $regex: nombreContiene, $options: 'i' };
   if (categoria) filtro.categoria = categoria;
+  if (ids !== undefined) filtro._id = { $in: separarIds(ids) };
 
   return Producto.find(filtro).sort({ createdAt: 1 });
 }
