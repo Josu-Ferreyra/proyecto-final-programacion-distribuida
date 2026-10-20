@@ -31,6 +31,12 @@ const productoSchema = new mongoose.Schema(
       },
       default: CATEGORIA_POR_DEFECTO,
     },
+    // Baja lógica: un producto dado de baja no se borra, porque Inventario y Ventas
+    // guardan su id (docs/05-propiedad-datos.md §5.1). Ventas no vende inactivos.
+    activo: {
+      type: Boolean,
+      default: true,
+    },
   },
   {
     timestamps: true,

@@ -28,7 +28,7 @@ async function actualizarProducto(req, res) {
 
 async function eliminarProducto(req, res) {
   await productosService.eliminar(req.params.id);
-  logger.info('Producto eliminado', { operacion: 'productos.eliminar', id: req.params.id });
+  logger.info('Producto dado de baja', { operacion: 'productos.baja', id: req.params.id });
   res.status(204).send();
 }
 

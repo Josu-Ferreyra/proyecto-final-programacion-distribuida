@@ -45,11 +45,11 @@ Swagger: <http://localhost:3100/api-docs> (especificación en `/api-docs.json`).
 | Endpoint | Respuestas |
 |---|---|
 | `GET /health` | `200 { service, status: "ok" }` (no consulta la base) |
-| `GET /productos?nombreContiene=&categoria=` | `200 [Producto]` · `400` filtro inválido |
+| `GET /productos?nombreContiene=&categoria=` | `200 [Producto]` con `activo` en cada uno · `400` filtro inválido |
 | `GET /productos/:id` | `200` · `400` id mal formado · `404` |
 | `POST /productos` `{ nombre, precio, categoria? }` | `201` · `400` (también si viene `stock`) · `409` nombre repetido |
 | `PUT /productos/:id` `{ nombre?, precio?, categoria? }` | `200` · `400` (también si viene `stock`: se ajusta en Inventario) · `404` · `409` |
-| `DELETE /productos/:id` | `204` · `400` · `404` |
+| `DELETE /productos/:id` | Baja lógica (`activo = false`): `204`, también si se repite · `400` · `404` |
 
 Todas las rutas de `/productos` responden `503 { error, servicio }` si la base no está
 disponible; el proceso sigue vivo y vuelve a responder cuando la base vuelve.

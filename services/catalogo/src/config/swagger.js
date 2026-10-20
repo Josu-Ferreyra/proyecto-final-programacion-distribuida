@@ -43,6 +43,7 @@ const spec = {
       get: {
         tags: ['Productos'],
         summary: 'Listar y buscar productos',
+        description: 'Incluye los productos dados de baja, con `activo: false`.',
         parameters: [
           {
             in: 'query',
@@ -115,10 +116,13 @@ const spec = {
       },
       delete: {
         tags: ['Productos'],
-        summary: 'Eliminar un producto',
+        summary: 'Dar de baja un producto (baja lógica)',
+        description:
+          'No borra el documento: lo deja con `activo = false`, porque Inventario y Ventas guardan su id. ' +
+          'Repetir la baja también responde 204.',
         parameters: [parametroId],
         responses: {
-          204: { description: 'Producto eliminado' },
+          204: { description: 'Producto dado de baja (o ya lo estaba)' },
           400: respuesta('BadRequest'),
           404: respuesta('NotFound'),
           503: respuesta('SinBase'),
@@ -135,6 +139,7 @@ const spec = {
           nombre: { type: 'string', example: 'Teclado mecánico' },
           precio: { type: 'number', example: 45000 },
           categoria: { type: 'string', enum: CATEGORIAS, example: 'periferico' },
+          activo: { type: 'boolean', example: true, description: 'false si el producto fue dado de baja' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
         },

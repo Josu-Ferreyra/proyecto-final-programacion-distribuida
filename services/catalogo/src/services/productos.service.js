@@ -104,10 +104,11 @@ async function actualizar(id, body) {
   return guardar(producto);
 }
 
+// Baja lógica: activo = false. Repetirla no es un error (sigue dado de baja).
 async function eliminar(id) {
   validarId(id);
-  const resultado = await Producto.deleteOne({ _id: id });
-  if (resultado.deletedCount === 0) throw noEncontrado(`Producto con id ${id} no encontrado`);
+  const resultado = await Producto.updateOne({ _id: id }, { activo: false });
+  if (resultado.matchedCount === 0) throw noEncontrado(`Producto con id ${id} no encontrado`);
 }
 
 module.exports = { listar, obtener, crear, actualizar, eliminar };
