@@ -1,0 +1,43 @@
+# Entorno completo del TP6: los tres microservicios con sus bases, en una red interna.
+# Convenciones (nombres, puertos, variables): docs/08-ratificacion-tp6.md §8.3.
+#
+#   docker compose up --build -d
+#   docker compose ps
+#   docker compose down        (conserva los datos; "down -v" los borra)
+name: proyecto-distribuido
+
+services:
+  # Una base por servicio: ningún servicio accede a la base de otro.
+  catalogo-db:
+    image: mongo:7
+    networks: [backend]
+
+  inventario-db:
+    image: mongo:7
+    networks: [backend]
+
+  ventas-db:
+    image: mongo:7
+    networks: [backend]
+
+  # Lock interno de Inventario. Ningún otro servicio se conecta.
+  redis:
+    image: redis:7-alpine
+    networks: [backend]
+
+  catalogo-service:
+    build: ./services/catalogo
+    image: grupo/catalogo:tp6
+    environment:
+      SERVICE_NAME: catalogo-service
+      PORT: 3100
+      MONGODB_URI: mongodb://catalogo-db:27017/catalogo
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["3100:3100"]
+    depends_on: [catalogo-db]
+    networks: [backend]
+
+# Las bases, Redis y los puertos Raft no se publican al host: solo los usan los
+# contenedores, por nombre DNS dentro de esta red.
+networks:
+  backend: {}
