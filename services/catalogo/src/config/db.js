@@ -35,10 +35,12 @@ async function conectarConReintentos(uri, { intentos = config.mongodbIntentos, e
 
 // Middleware: si la base se cae después del arranque, 503 en lugar de colgar.
 // /health no pasa por acá: indica que el proceso está vivo.
-const requiereDb = (req, res, next) =>
-  mongoose.connection.readyState === 1
-    ? next()
-    : res.status(503).json({ error: 'Base de datos no disponible', servicio: config.serviceName });
+function requiereDb(req, res, next) {
+  if (mongoose.connection.readyState === 1) return next();
+  const error = 'Base de datos no disponible';
+  logger.warn('Request rechazada', { operacion: `${req.method} ${req.originalUrl.split('?')[0]}`, status: 503, error });
+  res.status(503).json({ error, servicio: config.serviceName });
+}
 
 // Errores del driver que indican que la base no responde (y no un error del pedido).
 const ERRORES_DE_CONEXION = new Set([
