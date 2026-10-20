@@ -89,7 +89,79 @@ transversales"). No hay API Gateway.
 
 ## 8.4 Decisiones tomadas
 
-_Se completa en el siguiente commit._
+Son huecos que el TP5 dejó abiertos o detalles que aparecen recién al implementar. En la
+reunión se confirman; solo se reabre una si alguien trae un problema concreto del código,
+y en ese caso el cambio y su motivo quedan escritos acá. Todas se registran como cambios
+respecto del TP5 en [`arquitectura.md`](./arquitectura.md).
+
+| # | Tema | Qué se decidió | Afecta a |
+|---|---|---|---|
+| D1 | Cómo llega Ventas al Leader de Inventario | Los followers reenvían las escrituras al Leader; los 3 nodos comparten el alias DNS `inventario-service` | Inventario, Compose |
+| D2 | Bases de los 3 nodos de Inventario | Un contenedor `inventario-db` con una base por nodo, como en el TP4 | Inventario, Compose |
+| D3 | Timeout de commit de Raft vs. timeout de Ventas | `RAFT_COMMIT_TIMEOUT_MS=2500`, menor que los 3000 de Ventas | Inventario, Ventas |
+| D4 | Prefijo de las rutas | Sin `/api`, tal como están en las fichas; el diagnóstico `/api/cluster/*` conserva su path | Los tres |
+| D5 | HTTPS | Solo HTTP en Compose; el HTTPS del TP4 queda documentado en `app-base/` | Los tres |
+| D6 | Dependencia C4 (Inventario → Catálogo) | Se mantiene, como cerró el TP5 (§7.1) | Inventario, Catálogo |
+| D7 | Qué guarda Ventas si falla la compensación después de un timeout | Compra `FALLIDA` con `reintegroPendiente: true`, reintentada por el mismo proceso de 30 s | Ventas |
+
+### D1 · Cómo llega Ventas al Leader de Inventario
+
+El TP5 dice que, para Ventas, un follower de Inventario que responde `421` o `503` es
+"Inventario no disponible". Pero si `INVENTARIO_SERVICE_URL` apunta a un nodo que es
+follower, **todas** las compras fallarían aunque el cluster esté sano.
+
+| Opción | Cómo funciona | Contra |
+|---|---|---|
+| **A (elegida)** | El follower que recibe una escritura la **reenvía** al Leader y devuelve su respuesta. Los 3 nodos tienen el alias DNS `inventario-service` | Un salto HTTP extra cuando el pedido cae en un follower |
+| B (descartada) | Ventas recibe la lista de nodos y sigue el `421` hasta el Leader | Ventas pasa a saber que Inventario usa Raft: contradice la ficha de Ventas ("Fuera de alcance") |
+| C (descartada) | Literal del TP5: Ventas apunta a un nodo fijo y `421` = `503` | Funciona solo mientras ese nodo sea Leader |
+
+Con A, los contratos C2 y C3 no cambian, Raft sigue estando "detrás de su API" (diagrama del
+TP5) y un `421`/`503` sigue significando "no disponible", pero solo durante una elección.
+
+### D2 · Bases de los 3 nodos de Inventario
+
+El TP4 usaba un servidor Mongo con una base por nodo (`tp4_nodo1..3`). Se mantiene ese
+esquema: un contenedor `inventario-db` con las bases `inventario_nodo1..3`. La sección 8 del
+TP6 lo permite mientras ningún servicio acceda a la base de otro, y acá las tres bases son
+del mismo servicio. Se descartó usar 3 contenedores Mongo: es más fiel a "un nodo, una
+máquina", pero suma 2 contenedores sin cambiar ningún contrato.
+
+### D3 · Timeouts
+
+Ventas espera 3 s a Inventario (TP5 §6), pero el Leader espera el commit hasta
+`RAFT_COMMIT_TIMEOUT_MS` (5 s por defecto en el TP4). Con esos valores un descuento puede
+confirmarse **después** de que Ventas se rindió y ya mandó la compensación. Se fija
+`RAFT_COMMIT_TIMEOUT_MS=2500`, menor que los 3000 de Ventas: si Raft no confirma a tiempo,
+Inventario responde `503` antes de que Ventas corte, y Ventas recibe una respuesta en vez
+de un timeout.
+
+### D4 · Prefijo de rutas
+
+Las fichas escriben los endpoints propuestos sin `/api` (convención de
+`04-microservicios.md`). Se implementan **exactamente así**, para que la documentación,
+Swagger y el código coincidan. El diagnóstico `/api/cluster/*` conserva su path, como dice la
+tabla 4.4.
+
+### D5 · HTTPS
+
+El TP6 no exige TLS entre contenedores. En Compose todo va por HTTP dentro de la red
+`backend`; el HTTPS del TP4 (puertos 3441–3443, certificado `.pfx`) queda solo en
+`app-base/` y así se documenta en el README.
+
+### D6 · Dependencia C4
+
+El TP5 §7.1 la dejó con ⚠️ y una alternativa ("sin C4"). Se mantiene, porque así quedó en
+la ficha de Inventario, se usa solo en el alta de stock y su falla deja un estado válido
+(producto sin stock, que no se puede vender).
+
+### D7 · Compensación fallida
+
+TP5 §6.3: si C2 vence por timeout, Ventas manda C3; si C3 también falla, "se encola como en
+la cancelación". Pero en ese camino la compra **no se guarda**, así que no hay dónde
+encolar. Se decide guardar la compra con estado `FALLIDA` y `reintegroPendiente: true`, y que
+la reintente el mismo proceso de 30 s que ya existe para `CANCELACION_PENDIENTE`. Es un
+estado nuevo de Ventas: se registra como cambio respecto del TP5.
 
 ## 8.5 Condición de avance
 
