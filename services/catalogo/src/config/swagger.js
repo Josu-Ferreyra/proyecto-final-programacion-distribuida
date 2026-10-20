@@ -29,6 +29,7 @@ const spec = {
   servers: [{ url: '/', description: config.serviceName }],
   tags: [
     { name: 'Productos', description: 'Oferta: nombre, categoría y precio vigente' },
+    { name: 'Categorías', description: 'Categorías válidas para un producto' },
     { name: 'Salud', description: 'Estado del proceso' },
   ],
   paths: {
@@ -135,6 +136,18 @@ const spec = {
           400: respuesta('BadRequest'),
           404: respuesta('NotFound'),
           503: respuesta('SinBase'),
+        },
+      },
+    },
+    '/categorias': {
+      get: {
+        tags: ['Categorías'],
+        summary: 'Listar las categorías válidas',
+        responses: {
+          200: {
+            description: 'Categorías que acepta el campo categoria',
+            content: json({ type: 'array', items: { type: 'string' }, example: CATEGORIAS }),
+          },
         },
       },
     },

@@ -50,6 +50,7 @@ Swagger: <http://localhost:3100/api-docs> (especificación en `/api-docs.json`).
 | `GET /productos/:id` | Contrato **C4** (Inventario): `200` · `400` id mal formado · `404` |
 | `POST /productos` `{ nombre, precio, categoria? }` | `201` · `400` (también si viene `stock`) · `409` nombre repetido |
 | `PUT /productos/:id` `{ nombre?, precio?, categoria? }` | `200` · `400` (también si viene `stock`: se ajusta en Inventario) · `404` · `409` |
+| `GET /categorias` | `200 ["periferico", "monitor", "accesorio", "otro"]` (no consulta la base) |
 | `DELETE /productos/:id` | Baja lógica (`activo = false`): `204`, también si se repite · `400` · `404` |
 
 Todas las rutas de `/productos` responden `503 { error, servicio }` si la base no está

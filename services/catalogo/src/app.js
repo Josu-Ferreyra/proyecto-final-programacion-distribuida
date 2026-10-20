@@ -7,6 +7,7 @@ const { requiereDb, esErrorDeConexion } = require('./config/db');
 const { ErrorCatalogo } = require('./services/errores');
 const healthRouter = require('./routes/health.routes');
 const productosRouter = require('./routes/productos.routes');
+const categoriasRouter = require('./routes/categorias.routes');
 
 // "Operación" en los logs: método y path del pedido, sin la query.
 function endpoint(req) {
@@ -36,6 +37,7 @@ function crearApp() {
   app.get('/api-docs.json', (req, res) => res.json(spec));
 
   app.use('/productos', requiereDb, productosRouter);
+  app.use('/categorias', categoriasRouter);
 
   app.use((req, res) => {
     res.status(404).json({ error: 'Ruta no encontrada', servicio: config.serviceName });
