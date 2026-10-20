@@ -22,7 +22,9 @@ function crearApp() {
   app.use((req, res, next) => {
     const inicio = Date.now();
     res.on('finish', () => {
-      logger.info('Request', {
+      // El healthcheck de Compose pega cada 10 s: en debug para no tapar el resto.
+      const nivel = req.originalUrl.split('?')[0] === '/health' ? 'debug' : 'info';
+      logger.log(nivel, 'Request', {
         method: req.method,
         url: req.originalUrl,
         status: res.statusCode,
