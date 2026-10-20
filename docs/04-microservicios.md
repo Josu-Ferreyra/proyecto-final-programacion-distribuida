@@ -133,13 +133,13 @@ Las columnas **Responsable** y **Estado** se agregaron en la ratificación del T
 
 | Endpoint actual (TP4) | Servicio destino | Endpoint propuesto | Cambio | Responsable | Estado |
 |---|---|---|---|---|---|
-| `GET /api/productos` | Catálogo | `GET /productos` | Ya no devuelve `stock`. Para mostrar disponibilidad, el cliente consulta además `GET /stock?productoIds=…`. | Ferreyra | implementado |
-| `GET /api/productos/:id` | Catálogo | `GET /productos/:id` | Ya no devuelve `stock`. | Ferreyra | implementado |
-| `POST /api/productos` | Catálogo + Inventario | `POST /productos` (sin `stock`) y luego `PUT /stock/:productoId` `{ cantidad }` | Se separa en dos pedidos del cliente. Mientras no se carga el stock, el producto existe con 0 disponibles: no se vende de más. | Ferreyra (producto) · Vicente (stock) | Catálogo implementado · Inventario pendiente |
-| `PUT /api/productos/:id` | Catálogo (nombre, precio, categoría) / Inventario (stock) | `PUT /productos/:id` · `PUT /stock/:productoId` | `PUT /productos/:id` rechaza `stock`. El ajuste de stock pasa por el lock de Inventario y queda como movimiento (Caso 2). | Ferreyra (producto) · Vicente (stock) | Catálogo implementado · Inventario pendiente |
-| `DELETE /api/productos/:id` | Catálogo | `DELETE /productos/:id` | Pasa a baja lógica (`activo = false`). No borra stock ni compras; Ventas no vende productos inactivos. | Ferreyra | implementado |
+| `GET /api/productos` | Catálogo | `GET /productos` | Ya no devuelve `stock`. Para mostrar disponibilidad, el cliente consulta además `GET /stock?productoIds=…`. | Ferreyra | probado |
+| `GET /api/productos/:id` | Catálogo | `GET /productos/:id` | Ya no devuelve `stock`. | Ferreyra | probado |
+| `POST /api/productos` | Catálogo + Inventario | `POST /productos` (sin `stock`) y luego `PUT /stock/:productoId` `{ cantidad }` | Se separa en dos pedidos del cliente. Mientras no se carga el stock, el producto existe con 0 disponibles: no se vende de más. | Ferreyra (producto) · Vicente (stock) | Catálogo probado · Inventario pendiente |
+| `PUT /api/productos/:id` | Catálogo (nombre, precio, categoría) / Inventario (stock) | `PUT /productos/:id` · `PUT /stock/:productoId` | `PUT /productos/:id` rechaza `stock`. El ajuste de stock pasa por el lock de Inventario y queda como movimiento (Caso 2). | Ferreyra (producto) · Vicente (stock) | Catálogo probado · Inventario pendiente |
+| `DELETE /api/productos/:id` | Catálogo | `DELETE /productos/:id` | Pasa a baja lógica (`activo = false`). No borra stock ni compras; Ventas no vende productos inactivos. | Ferreyra | probado |
 | `POST /api/productos/:id/comprar` | Ventas (+ Inventario) | `POST /compras` `{ items }` → C2 `POST /descuentos` | Pasa a crear una compra registrada, de uno o varios productos. El descuento lo decide Inventario. | Porcari (+ Vicente) | pendiente |
-| — | Catálogo | `GET /productos?ids=…`, `GET /categorias` | Nuevos. | Ferreyra | implementado |
+| — | Catálogo | `GET /productos?ids=…`, `GET /categorias` | Nuevos. | Ferreyra | probado |
 | — | Inventario | `GET /stock?productoIds=…`, `DELETE /descuentos/:referencia`, `GET /movimientos?productoId=…` | Nuevos. | Vicente | pendiente |
 | — | Ventas | `GET /compras/:id`, `PATCH /compras/:id/cancelar` | Nuevos. | Porcari | pendiente |
 | `GET /api/cluster/estado`, `GET /api/cluster/log` | Cada servicio replicado | Mismos paths, sobre su propio cluster | Diagnóstico, no negocio. | Vicente | pendiente |
