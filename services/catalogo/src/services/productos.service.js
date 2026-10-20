@@ -23,7 +23,16 @@ function mensajeDeValidacion(err) {
     .join('; ');
 }
 
+// Solo se aceptan los campos de Catálogo. El stock es de Inventario: si llega, se
+// rechaza indicando dónde se ajusta, en lugar de ignorarlo en silencio (Caso 2).
 function tomarCampos(body) {
+  if (body.stock !== undefined) {
+    throw solicitudInvalida('El stock no se modifica en Catálogo: se ajusta con PUT /stock/:productoId en Inventario');
+  }
+  const desconocidos = Object.keys(body).filter((c) => !CAMPOS_EDITABLES.includes(c));
+  if (desconocidos.length > 0) {
+    throw solicitudInvalida(`Campos no permitidos: ${desconocidos.join(', ')}. Solo se aceptan: ${CAMPOS_EDITABLES.join(', ')}`);
+  }
   return Object.fromEntries(CAMPOS_EDITABLES.filter((c) => body[c] !== undefined).map((c) => [c, body[c]]));
 }
 

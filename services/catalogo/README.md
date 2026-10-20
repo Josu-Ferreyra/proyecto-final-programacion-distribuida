@@ -47,8 +47,8 @@ Swagger: <http://localhost:3100/api-docs> (especificación en `/api-docs.json`).
 | `GET /health` | `200 { service, status: "ok" }` (no consulta la base) |
 | `GET /productos?nombreContiene=&categoria=` | `200 [Producto]` · `400` filtro inválido |
 | `GET /productos/:id` | `200` · `400` id mal formado · `404` |
-| `POST /productos` `{ nombre, precio, categoria? }` | `201` · `400` · `409` nombre repetido |
-| `PUT /productos/:id` | `200` · `400` · `404` · `409` |
+| `POST /productos` `{ nombre, precio, categoria? }` | `201` · `400` (también si viene `stock`) · `409` nombre repetido |
+| `PUT /productos/:id` `{ nombre?, precio?, categoria? }` | `200` · `400` (también si viene `stock`: se ajusta en Inventario) · `404` · `409` |
 | `DELETE /productos/:id` | `204` · `400` · `404` |
 
 Todas las rutas de `/productos` responden `503 { error, servicio }` si la base no está

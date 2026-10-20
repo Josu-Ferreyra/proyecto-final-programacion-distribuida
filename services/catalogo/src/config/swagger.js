@@ -65,7 +65,8 @@ const spec = {
       },
       post: {
         tags: ['Productos'],
-        summary: 'Dar de alta un producto',
+        summary: 'Dar de alta un producto (sin stock)',
+        description: 'El stock inicial se carga después en Inventario con `PUT /stock/:productoId`. Si el body trae `stock` u otro campo que no sea de Catálogo, responde 400.',
         requestBody: {
           required: true,
           content: {
@@ -98,6 +99,7 @@ const spec = {
       put: {
         tags: ['Productos'],
         summary: 'Modificar nombre, precio o categoría (parcial)',
+        description: 'Solo acepta `nombre`, `precio` y `categoria`. Con `stock` responde 400: el stock se ajusta con `PUT /stock/:productoId` en Inventario.',
         parameters: [parametroId],
         requestBody: {
           required: true,
@@ -162,7 +164,7 @@ const spec = {
       },
     },
     responses: {
-      BadRequest: { description: 'Datos, parámetros o id con formato inválido', content: json(ref('Error')) },
+      BadRequest: { description: 'Datos, parámetros o id con formato inválido, o campos que no son de Catálogo (como stock)', content: json(ref('Error')) },
       NotFound: { description: 'El producto no existe', content: json(ref('Error')) },
       Conflict: { description: 'Ya existe un producto con ese nombre', content: json(ref('Error')) },
       SinBase: { description: 'La base de datos del servicio no está disponible', content: json(ref('Error')) },
