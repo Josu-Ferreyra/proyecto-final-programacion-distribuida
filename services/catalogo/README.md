@@ -28,6 +28,23 @@ curl http://localhost:3100/productos
 
 Swagger: <http://localhost:3100/api-docs> (especificación en `/api-docs.json`).
 
+## Ejecutar con Docker (solo este servicio)
+
+La imagen no incluye `.env` ni `node_modules/` (ver `.dockerignore`): toda la
+configuración se pasa con `-e`. Normalmente se levanta junto con el resto desde
+[`compose.yml`](../../compose.yml); para probar la imagen sola:
+
+```bash
+docker network create tp6-prueba
+docker run -d --rm --name catalogo-db --network tp6-prueba mongo:7
+docker build -t grupo/catalogo:tp6 ./services/catalogo
+docker run --rm --network tp6-prueba -p 3100:3100 \
+  -e SERVICE_NAME=catalogo-service -e PORT=3100 \
+  -e MONGODB_URI=mongodb://catalogo-db:27017/catalogo grupo/catalogo:tp6
+# en otra terminal: curl http://localhost:3100/health
+docker stop catalogo-db && docker network rm tp6-prueba
+```
+
 ## Variables de entorno
 
 | Variable | Por defecto | Para qué |
