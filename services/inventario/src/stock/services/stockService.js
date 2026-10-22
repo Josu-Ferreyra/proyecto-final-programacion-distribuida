@@ -53,7 +53,9 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function crearStockService({ raft, catalogo, config, logger }) {
+// lock.conLock(productoIds, fn): las tres escrituras (alta/ajuste, descuento y
+// reintegro) pasan por el mismo lock por producto (R8, TP5 §4.2).
+function crearStockService({ raft, catalogo, lock, config, logger }) {
   // Propone y espera commit + aplicación. Los errores del protocolo se traducen a 503:
   // para quien llama es "Inventario no pudo confirmar la operación", sin detalles de Raft.
   async function proponer(comando) {
@@ -102,23 +104,25 @@ function crearStockService({ raft, catalogo, config, logger }) {
       throw solicitudInvalida('La "cantidad" debe ser un entero mayor o igual a 0');
     }
 
-    const existe = await Stock.exists({ productoId });
-    if (!existe) {
-      // C4: solo en el alta, y ANTES de proponer (la State Machine no hace HTTP).
-      const producto = await catalogo.obtenerProducto(productoId);
-      if (!producto.existe) throw noEncontrado(`El producto ${productoId} no existe en Catálogo`);
-      if (!producto.activo) throw conflicto(`El producto ${productoId} está dado de baja en Catálogo`);
-    }
+    return lock.conLock([productoId], async () => {
+      const existe = await Stock.exists({ productoId });
+      if (!existe) {
+        // C4: solo en el alta, y ANTES de proponer (la State Machine no hace HTTP).
+        const producto = await catalogo.obtenerProducto(productoId);
+        if (!producto.existe) throw noEncontrado(`El producto ${productoId} no existe en Catálogo`);
+        if (!producto.activo) throw conflicto(`El producto ${productoId} está dado de baja en Catálogo`);
+      }
 
-    const comando = {
-      tipo: existe ? TIPOS.AJUSTAR_STOCK : TIPOS.ALTA_STOCK,
-      productoId,
-      cantidad,
-      fecha: new Date().toISOString(), // la fija el Leader: igual en todas las réplicas
-    };
-    logger.info(existe ? 'Propongo ajuste de stock' : 'Propongo alta de stock', { operacion: comando.tipo, productoId, cantidad });
-    const resultado = await proponer(comando);
-    return { productoId: resultado.productoId, stock: resultado.stock };
+      const comando = {
+        tipo: existe ? TIPOS.AJUSTAR_STOCK : TIPOS.ALTA_STOCK,
+        productoId,
+        cantidad,
+        fecha: new Date().toISOString(), // la fija el Leader: igual en todas las réplicas
+      };
+      logger.info(existe ? 'Propongo ajuste de stock' : 'Propongo alta de stock', { operacion: comando.tipo, productoId, cantidad });
+      const resultado = await proponer(comando);
+      return { productoId: resultado.productoId, stock: resultado.stock };
+    });
   }
 
   // POST /descuentos (C2): todo o nada, idempotente por referencia.
@@ -126,29 +130,31 @@ function crearStockService({ raft, catalogo, config, logger }) {
     validarReferencia(referencia);
     const items = validarItems(itemsCrudos);
 
-    const previo = await Descuento.findOne({ referencia }).lean();
-    if (previo) return { creado: false, referencia, items: previo.items };
+    return lock.conLock(items.map((i) => i.productoId), async () => {
+      const previo = await Descuento.findOne({ referencia }).lean();
+      if (previo) return { creado: false, referencia, items: previo.items };
 
-    const actuales = new Map(
-      (await Stock.find({ productoId: { $in: items.map((i) => i.productoId) } }).lean()).map((s) => [s.productoId, s.cantidad])
-    );
-    const faltantes = items
-      .map((i) => ({ productoId: i.productoId, solicitado: i.cantidad, disponible: actuales.get(i.productoId) ?? 0 }))
-      .filter((f) => f.disponible < f.solicitado);
-    if (faltantes.length > 0) {
-      logger.warn('Descuento rechazado: stock insuficiente', { operacion: 'DESCONTAR', referencia, faltantes });
-      throw conflicto('Stock insuficiente', { faltantes });
-    }
+      const actuales = new Map(
+        (await Stock.find({ productoId: { $in: items.map((i) => i.productoId) } }).lean()).map((s) => [s.productoId, s.cantidad])
+      );
+      const faltantes = items
+        .map((i) => ({ productoId: i.productoId, solicitado: i.cantidad, disponible: actuales.get(i.productoId) ?? 0 }))
+        .filter((f) => f.disponible < f.solicitado);
+      if (faltantes.length > 0) {
+        logger.warn('Descuento rechazado: stock insuficiente', { operacion: 'DESCONTAR', referencia, faltantes });
+        throw conflicto('Stock insuficiente', { faltantes });
+      }
 
-    if (config.descuentoDelayMs > 0) await delay(config.descuentoDelayMs);
+      if (config.descuentoDelayMs > 0) await delay(config.descuentoDelayMs);
 
-    logger.info('Propongo descuento de stock', { operacion: TIPOS.DESCONTAR, referencia, items });
-    const resultado = await proponer({ tipo: TIPOS.DESCONTAR, referencia, items, fecha: new Date().toISOString() });
+      logger.info('Propongo descuento de stock', { operacion: TIPOS.DESCONTAR, referencia, items });
+      const resultado = await proponer({ tipo: TIPOS.DESCONTAR, referencia, items, fecha: new Date().toISOString() });
 
-    if (resultado.estado === 'RECHAZADO') {
-      throw conflicto('Stock insuficiente', { faltantes: resultado.faltantes });
-    }
-    return { creado: resultado.estado === 'APLICADO', referencia, items: resultado.items };
+      if (resultado.estado === 'RECHAZADO') {
+        throw conflicto('Stock insuficiente', { faltantes: resultado.faltantes });
+      }
+      return { creado: resultado.estado === 'APLICADO', referencia, items: resultado.items };
+    });
   }
 
   // DELETE /descuentos/:referencia (C3): reintegra exactamente lo descontado.
@@ -159,9 +165,11 @@ function crearStockService({ raft, catalogo, config, logger }) {
     if (!descuento) throw noEncontrado(`No hay un descuento con la referencia ${referencia}`);
     if (descuento.estado === 'REINTEGRADO') return; // idempotente: 204
 
-    logger.info('Propongo reintegro de stock', { operacion: TIPOS.REINTEGRAR, referencia });
-    const resultado = await proponer({ tipo: TIPOS.REINTEGRAR, referencia, fecha: new Date().toISOString() });
-    if (resultado.estado === 'NO_EXISTE') throw noEncontrado(`No hay un descuento con la referencia ${referencia}`);
+    await lock.conLock(descuento.items.map((i) => i.productoId), async () => {
+      logger.info('Propongo reintegro de stock', { operacion: TIPOS.REINTEGRAR, referencia });
+      const resultado = await proponer({ tipo: TIPOS.REINTEGRAR, referencia, fecha: new Date().toISOString() });
+      if (resultado.estado === 'NO_EXISTE') throw noEncontrado(`No hay un descuento con la referencia ${referencia}`);
+    });
   }
 
   return { consultar, movimientos, fijar, descontar, reintegrar };
