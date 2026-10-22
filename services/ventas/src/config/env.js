@@ -31,6 +31,9 @@ const config = Object.freeze({
   catalogoUrl: obligatoria('CATALOGO_SERVICE_URL'),
   inventarioUrl: obligatoria('INVENTARIO_SERVICE_URL'),
   httpTimeoutMs: entero('HTTP_TIMEOUT_MS', 3000), // TP5 §6: 3 s por llamada
+
+  // Cada cuánto se reintentan los reintegros pendientes (TP5 §6.3 y D7).
+  reintentoReintegroMs: entero('REINTENTO_REINTEGRO_MS', 30000),
 });
 
 module.exports = config;

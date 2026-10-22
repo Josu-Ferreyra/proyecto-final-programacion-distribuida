@@ -6,6 +6,7 @@ const logger = require('./config/logger');
 const { conectarConReintentos } = require('./config/db');
 const { Compra } = require('./models/compra.model');
 const { crearApp } = require('./app');
+const { iniciarReintentos, detenerReintentos } = require('./services/reintentos');
 
 async function main() {
   logger.info('Iniciando servicio', { operacion: 'arranque', puerto: config.port });
@@ -16,12 +17,14 @@ async function main() {
   const servidor = crearApp().listen(config.port, () => {
     logger.info(`API escuchando en el puerto ${config.port} (docs: /api-docs)`, { operacion: 'arranque' });
   });
+  iniciarReintentos();
 
   let cerrando = false;
   const apagar = async (senial) => {
     if (cerrando) return;
     cerrando = true;
     logger.info('Deteniendo servicio', { operacion: 'apagado', senial });
+    detenerReintentos();
     servidor.close();
     await mongoose.disconnect();
     process.exit(0);
