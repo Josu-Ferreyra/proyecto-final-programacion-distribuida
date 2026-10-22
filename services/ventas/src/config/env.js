@@ -25,6 +25,12 @@ const config = Object.freeze({
   mongodbIntentos: entero('MONGODB_CONNECT_RETRIES', 10),
   mongodbEsperaMs: entero('MONGODB_RETRY_MS', 3000),
   logLevel: process.env.LOG_LEVEL || 'info',
+
+  // Dependencias (C1 a Catálogo, C2 y C3 a Inventario). Local: localhost; Compose:
+  // nombre DNS del servicio. Nunca escritas en el código (sección 6.3 del TP6).
+  catalogoUrl: obligatoria('CATALOGO_SERVICE_URL'),
+  inventarioUrl: obligatoria('INVENTARIO_SERVICE_URL'),
+  httpTimeoutMs: entero('HTTP_TIMEOUT_MS', 3000), // TP5 §6: 3 s por llamada
 });
 
 module.exports = config;
