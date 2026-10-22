@@ -29,11 +29,11 @@ node scripts/seed.js            # datos de prueba (Parte 3)
 | Fallo de dependencia | Parte 3 | [`fallo-dependencia.md`](./evidencias/fallo-dependencia.md) | `docker compose stop catalogo-service` | ok |
 | Logs | Parte 1 | [`logs.md`](./evidencias/logs.md) | `docker compose logs -f <svc>` | Catálogo ok · falta Inventario y Ventas |
 | Swagger | Parte 1 | [`swagger.md`](./evidencias/swagger.md) | abrir `/api-docs` | Catálogo ok · falta Inventario y Ventas |
-| Configuración por entorno | Parte 2 | [`11-configuracion-por-entorno.md`](./11-configuracion-por-entorno.md) (archivo de evidencia a definir en S1) | modo local y modo Compose con el mismo código | pendiente (S1) |
+| Configuración por entorno | Parte 2 | [`configuracion-entorno.md`](./evidencias/configuracion-entorno.md) · [`11-configuracion-por-entorno.md`](./11-configuracion-por-entorno.md) §11.3 | modo local y modo Compose con el mismo código | ok |
 | Startup / disponibilidad | Parte 1 | [`startup.md`](./evidencias/startup.md) | `docker compose stop catalogo-db` | Catálogo ok · falta Inventario y Ventas |
 | Fallo parcial | Parte 3 | [`fallo-parcial.md`](./evidencias/fallo-parcial.md) | ver [`12-comunicacion-y-fallos.md`](./12-comunicacion-y-fallos.md) | ok |
 | Datos de prueba | Parte 3 | [`datos-prueba.md`](./evidencias/datos-prueba.md) | `node scripts/seed.js` | ok |
-| Failover de Inventario (extra) | Parte 2 | [`inventario-pruebas.md` §4](./evidencias/inventario-pruebas.md#4-failover-del-cluster-122) | `docker compose stop <leader>` | ok (repetir en Compose: S3) |
+| Failover de Inventario (extra) | Parte 2 | [`inventario-pruebas.md` §4 y §4.1](./evidencias/inventario-pruebas.md#41-failover-en-docker-compose-comprando-por-ventas) | `docker compose stop <leader>` | ok (local y Compose) |
 
 El estado pasa a `ok` cuando la evidencia tiene la salida real de una corrida. Las de la
 Parte 1 se corrieron el 2026-10-20 con Catálogo, las tres bases y Redis (Inventario y Ventas
