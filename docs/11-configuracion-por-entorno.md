@@ -53,13 +53,13 @@ dos modos (3201–3203), así que los scripts de diagnóstico (`estado-cluster.j
 
 3. Detener todo. **Modo Compose:** `docker compose up --build -d`, cargar los datos de prueba y
    correr el mismo smoke test.
+   Resultado: los 9 contenedores quedan `healthy`, `node scripts/seed.js` carga los 4 productos y
+   `node scripts/smoke-test.js` da **23 OK, 0 FAIL**.
 
 4. `git status` → ningún archivo de `src/` cambió entre un modo y el otro.
+   Resultado: para pasar al modo Compose completo solo cambió `compose.yml` (PR #28); ningún
+   archivo de `services/`.
 
-> **Estado para Inventario:** los pasos 1 y 2 están verificados. Además, la misma imagen corrió
-> como los 3 nodos en contenedores con solo cambiar variables (`CLUSTER_FILE=cluster.docker.json`,
-> `MONGODB_URI=mongodb://inventario-db:27017/…`, `REDIS_URL=redis://redis:6379`,
-> `CATALOGO_SERVICE_URL=http://catalogo-service:3100`), sin tocar el código
-> ([evidencias](./evidencias/inventario-pruebas.md#8-los-3-nodos-en-docker)). La corrida completa
-> con `docker compose up` se hace cuando estén descomentados en `compose.yml` los bloques de
-> Inventario y de Ventas.
+> **Estado:** los 4 pasos están verificados. Salida completa de los pasos 3 y 4 en
+> [`evidencias/configuracion-entorno.md`](./evidencias/configuracion-entorno.md), corrida sobre
+> `main` con los tres servicios en Compose.
