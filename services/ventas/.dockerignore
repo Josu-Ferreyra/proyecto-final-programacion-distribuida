@@ -1,0 +1,11 @@
+# Lo que nunca entra a la imagen: dependencias locales, secretos y archivos generados
+node_modules/
+.env
+.env.*
+*.log
+logs/
+.git/
+certs/*.pfx
+
+# Mocks de Catálogo e Inventario: solo para desarrollo local
+dev/
