@@ -68,11 +68,12 @@ flowchart LR
 
 | Elemento del diagrama | Debe coincidir con | ✔ |
 |---|---|---|
-| Cada servicio y su frase de responsabilidad | Fichas 8.1 de [`04-microservicios.md`](./04-microservicios.md) | ☐ |
-| Cada base de datos y sus datos | "Datos propios" de las fichas y [matriz de propiedad](./05-propiedad-datos.md) | ✅ con la matriz · ☐ con las fichas |
+| Cada servicio y su frase de responsabilidad | Fichas §4.2 de [`04-microservicios.md`](./04-microservicios.md) | ✅ |
+| Cada base de datos y sus datos | "Datos propios" de las fichas y [matriz de propiedad](./05-propiedad-datos.md) | ✅ con la matriz · ✅ con las fichas |
 | Cada flecha entre servicios | Una fila de la matriz de comunicaciones (C1–C4), y viceversa | ✅ |
-| El sentido de cada flecha | "Dependencias" de la ficha del servicio de origen | ☐ |
-| Cada flecha desde el cliente | Endpoints de las fichas | ☐ |
+| El sentido de cada flecha | "Dependencias" de la ficha del servicio de origen | ✅ |
+| Cada flecha desde el cliente | Endpoints de las fichas | ✅ |
 | No hay flechas a la base de **otro** servicio | Regla de diseño del TP | ✅ |
 
-Los ☐ se completan contra las fichas de la Parte 2 en la sesión de validación.
+Los controles contra las fichas de la Parte 2 se completaron en la ratificación del TP6
+([`08-ratificacion-tp6.md`](./08-ratificacion-tp6.md) §8.6).

@@ -69,14 +69,15 @@ Ningún par de servicios se llama en los dos sentidos (ver [diagrama](./diagrama
 ## 7.3 Acciones derivadas
 
 Cosas que la revisión de la Parte 3 encontró que deben reflejarse en otros documentos. Se
-confirman o descartan en la sesión.
+cerraron en la ratificación del TP6 ([`08-ratificacion-tp6.md`](./08-ratificacion-tp6.md) §8.6):
+todas ya estaban incorporadas a las fichas por el PR #3.
 
 | Observación | Acción | PR donde se corrigió |
 |---|---|---|
-| Ventas necesita consultar varios productos en una sola llamada | Agregar `GET /productos?ids=…` a los endpoints de la ficha de Catálogo | _pendiente_ |
-| Las categorías hoy son un enum en el código | Agregar `GET /categorias` a la ficha de Catálogo | _pendiente_ |
-| `DELETE /api/productos/:id` borra el documento y deja referencias huérfanas | Ficha de Catálogo: el `DELETE` pasa a ser baja lógica (`activo = false`) | _pendiente_ |
-| `PUT /api/productos/:id` acepta `stock` | Ficha de Catálogo: `stock` queda fuera de alcance; el ajuste es `PUT /stock/:productoId` en Inventario | _pendiente_ |
-| El lock Redis está en el controller de productos | Ficha de Inventario: el lock se menciona como detalle interno, no en la interfaz | _pendiente_ |
-| Dependencia Inventario → Catálogo (C4) | Confirmar que figure en "Dependencias" de la ficha de Inventario, o eliminar C4 (alternativa 1) en todos los documentos | _pendiente_ |
-| Completar los ☐ del control de coherencia del diagrama | Contrastar con las fichas finales | _pendiente_ |
+| Ventas necesita consultar varios productos en una sola llamada | Agregar `GET /productos?ids=…` a los endpoints de la ficha de Catálogo | ✅ #3 (`04-microservicios.md` §4.2 y §4.5) |
+| Las categorías hoy son un enum en el código | Agregar `GET /categorias` a la ficha de Catálogo | ✅ #3 (`04-microservicios.md` §4.2 y §4.5) |
+| `DELETE /api/productos/:id` borra el documento y deja referencias huérfanas | Ficha de Catálogo: el `DELETE` pasa a ser baja lógica (`activo = false`) | ✅ #3 (ficha de Catálogo y tabla 4.4) |
+| `PUT /api/productos/:id` acepta `stock` | Ficha de Catálogo: `stock` queda fuera de alcance; el ajuste es `PUT /stock/:productoId` en Inventario | ✅ #3 (fichas de Catálogo e Inventario) |
+| El lock Redis está en el controller de productos | Ficha de Inventario: el lock se menciona como detalle interno, no en la interfaz | ✅ #3 (ficha de Inventario) |
+| Dependencia Inventario → Catálogo (C4) | Confirmar que figure en "Dependencias" de la ficha de Inventario, o eliminar C4 (alternativa 1) en todos los documentos | ✅ #3 la agregó a la ficha; se mantiene por la decisión D6 de [`08-ratificacion-tp6.md`](./08-ratificacion-tp6.md) |
+| Completar los ☐ del control de coherencia del diagrama | Contrastar con las fichas finales | ✅ `docs/ratificacion-tp6` ([`diagrama-arquitectura.md`](./diagrama-arquitectura.md#control-de-coherencia)) |
