@@ -65,6 +65,43 @@ curl -X POST localhost:3201/descuentos -H "Content-Type: application/json" \
 | `comparar-bases.js` con `inventario-3` caído | NO CONVERGEN (nodo3 en `lastApplied` 20, los otros en 22) |
 | Se vuelve a levantar `inventario-3` | `comparar-bases.js` → **CONVERGEN** (los 3 en término 3, `lastApplied` 22) |
 
+### 4.1 Failover en Docker Compose, comprando por Ventas
+
+Escenario C de [`12-comunicacion-y-fallos.md`](../12-comunicacion-y-fallos.md), con los tres
+servicios en Compose (commit `cedaf24`, PR #28) y los datos de `node scripts/seed.js`. La compra
+entra por Ventas (`POST /compras`), que llama a Inventario por el alias `inventario-service`.
+
+```bash
+node services/inventario/scripts/estado-cluster.js     # Leader: inventario-1 (término 1)
+curl -X POST localhost:3300/compras -H "Content-Type: application/json" \
+  -d '{"items":[{"productoId":"<id del teclado>","cantidad":1}]}'
+docker compose stop inventario-1                        # el Leader
+# repetir la compra hasta que vuelva a dar 201
+docker compose start inventario-1
+docker compose exec inventario-2 node scripts/comparar-bases.js
+```
+
+| Momento | Resultado |
+|---|---|
+| Con el cluster completo | `POST /compras` → `201` |
+| Inmediatamente después de `docker compose stop inventario-1` | `503 {"error":"Inventario no disponible: no se pudo registrar la compra","servicio":"ventas-service","dependencia":"inventario-service", …}` |
+| A los 9 s | `POST /compras` → **`201`**; `inventario-2` es LEADER en el término 3. Ventas no se enteró del cambio de Leader |
+| `docker compose start inventario-1` y `comparar-bases.js` | **CONVERGEN** (los 3 en término 3, `lastApplied` 10); stock del teclado 8 en 3201, 3202 y 3203 |
+
+Movimientos del teclado (`GET /movimientos?productoId=…`):
+
+```text
+  #2 ALTA         10 -> stock 10
+  #6 DESCUENTO    -1 -> stock 9   (compra del smoke test)
+  #7 REINTEGRO     1 -> stock 10  (cancelación del smoke test)
+  #8 DESCUENTO    -1 -> stock 9   (compra con el cluster completo)
+  #10 DESCUENTO   -1 -> stock 8   (compra a los 9 s, con el Leader nuevo)
+```
+
+La compra que dio `503` no dejó stock descontado: su `POST /descuentos` se cortó por timeout
+en plena caída del Leader y nunca se aplicó (no hay movimiento con su referencia). Ventas la
+registró con la compensación pendiente (D7) y la reintenta sola.
+
 ## 5. El Caso 2 del TP5, corregido (§12.3)
 
 Nodos con `DESCUENTO_DELAY_MS=3000` y `LOCK_WAIT_MS=5000`:
