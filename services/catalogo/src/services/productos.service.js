@@ -9,6 +9,11 @@ const { solicitudInvalida, noEncontrado, conflicto } = require('./errores');
 
 const CAMPOS_EDITABLES = ['nombre', 'precio', 'categoria'];
 
+// nombreContiene es texto literal, no una expresión regular: sin escapar,
+// ?nombreContiene=( hacía fallar la consulta con 500 (observación 12 de
+// docs/01-inventario.md).
+const escapar = (texto) => texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 function esIdValido(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
@@ -81,7 +86,7 @@ async function listar({ nombreContiene, categoria, ids }) {
   }
 
   const filtro = {};
-  if (nombreContiene) filtro.nombre = { $regex: nombreContiene, $options: 'i' };
+  if (nombreContiene) filtro.nombre = { $regex: escapar(nombreContiene), $options: 'i' };
   if (categoria) filtro.categoria = categoria;
   if (ids !== undefined) filtro._id = { $in: separarIds(ids) };
 
