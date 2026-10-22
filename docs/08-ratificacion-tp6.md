@@ -9,11 +9,11 @@
 > se implementa, quién es dueño de cada parte y qué decisiones se tomaron antes de escribir
 > código.
 
-Participantes: _Josué Ferreyra, Santiago Vicente, Matías Porcari_ — fecha: _AAAA-MM-DD_
+Participantes: _Josué Ferreyra, Santiago Vicente, Matías Porcari_ — fecha: _2026-10-22_
 
-> **Estado: borrador para la reunión.** El contenido lo preparó la Parte 1 para que la
-> reunión sea confirmar, no redactar. Cuando los tres lo aprueben se completan la fecha y
-> los ☐ de la condición de avance (§8.5).
+> **Estado: cerrada el 2026-10-22.** El contenido lo preparó la Parte 1 para que la reunión
+> fuera confirmar, no redactar. Los tres confirmaron D1–D7 y las convenciones; los hallazgos
+> que aparecieron al implementar están en §8.7.
 
 ## 8.1 Agenda (60 min)
 
@@ -165,12 +165,12 @@ estado nuevo de Ventas: se registra como cambio respecto del TP5.
 
 ## 8.5 Condición de avance
 
-- [ ] Cada uno puede explicar qué responsabilidad implementa su servicio, qué datos puede
+- [x] Cada uno puede explicar qué responsabilidad implementa su servicio, qué datos puede
       modificar y qué dependencias externas necesita.
-- [ ] Cada fila de la tabla 4.4 tiene dueño y columna Estado.
-- [ ] D1–D7 confirmadas por los tres y registradas en este acta con su motivo.
-- [ ] Convenciones del §8.3 congeladas.
-- [ ] Acciones derivadas del TP5 (§7.3) marcadas como resueltas o con el PR que las resuelve.
+- [x] Cada fila de la tabla 4.4 tiene dueño y columna Estado.
+- [x] D1–D7 confirmadas por los tres y registradas en este acta con su motivo.
+- [x] Convenciones del §8.3 congeladas.
+- [x] Acciones derivadas del TP5 (§7.3) marcadas como resueltas o con el PR que las resuelve.
 
 ## 8.6 Acciones derivadas del TP5
 
@@ -200,3 +200,14 @@ incorporadas por el PR #3 (`04-microservicios.md` §4.5); solo faltaba registrar
 Con esto la tabla de [`diagrama-arquitectura.md`](./diagrama-arquitectura.md#control-de-coherencia)
 queda completa. El diagrama con los nodos, puertos y la red de Docker se actualiza en la
 Parte 1 junto con `compose.yml`.
+
+## 8.7 Hallazgos de la implementación
+
+Lo que apareció al implementar y no estaba previsto en el acta. Ninguno cambia los contratos
+C1–C4; el detalle completo de Ventas está en
+[`12-comunicacion-y-fallos.md`](./12-comunicacion-y-fallos.md#127-diferencias-respecto-de-06-comunicacionesmd-tp5)
+§12.7 y en [`arquitectura.md`](./arquitectura.md#tp6-cambios-respecto-del-tp5).
+
+| Hallazgo | Qué se hizo |
+|---|---|
+| Después de un timeout de C2, un `404` de la compensación (C3) no es definitivo: el descuento puede aplicarse después | La compra queda `FALLIDA` con `reintegroPendiente` y el reintento de los 30 s la revierte. Los contratos C1–C3 no cambian |
