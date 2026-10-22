@@ -17,9 +17,8 @@
 | `inventario-1`, `inventario-2`, `inventario-3` | `grupo/inventario:tp6` | Cluster Raft de Inventario | `inventario-db`, `redis` |
 | `ventas-service` | `grupo/ventas:tp6` | Servicio de Ventas | `ventas-db` |
 
-Todos están en una sola red, `backend`. Inventario y Ventas están comentados en
-`compose.yml` hasta que las Partes 2 y 3 suban su Dockerfile; mientras tanto Compose levanta
-Catálogo con las tres bases y Redis.
+Todos están en una sola red, `backend`, y `docker compose up --build` los levanta a los 9
+(tres bases, Redis, Catálogo, los tres nodos de Inventario y Ventas).
 
 ```bash
 docker compose config        # valida la sintaxis y muestra las variables resueltas

@@ -38,6 +38,7 @@ x-inventario-env: &inventario-env
   CATALOGO_SERVICE_URL: http://catalogo-service:3100
   HTTP_TIMEOUT_MS: 3000
   RAFT_COMMIT_TIMEOUT_MS: 2500       # D3: menor que los 3000 ms de Ventas
+  DESCUENTO_DELAY_MS: ${DESCUENTO_DELAY_MS:-0}   # pruebas de timeout (docs/12 §12.4)
   LOG_LEVEL: ${LOG_LEVEL:-info}
 
 services:
@@ -91,67 +92,65 @@ services:
     restart: on-failure
     networks: [backend]
 
-  # ---------------------------------------------------------------------------
-  # Inventario (Parte 2) y Ventas (Parte 3): se descomentan cuando exista el
-  # Dockerfile de cada servicio. Mientras tanto, Compose levanta Catálogo solo.
-  # ---------------------------------------------------------------------------
+  # Inventario: cluster Raft de 3 nodos, misma imagen. D1: los tres responden al nombre
+  # DNS inventario-service; los followers reenvían las escrituras al Leader.
+  inventario-1:
+    <<: *inventario
+    environment:
+      <<: *inventario-env
+      RAFT_NODO_ID: inventario-1
+      MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo1   # D2: una base por nodo
+    ports: ["3201:3200"]               # solo para diagnóstico y prueba de failover
+    networks:
+      backend:
+        aliases: [inventario-service]  # D1: los 3 nodos responden al mismo nombre
 
-  # inventario-1:
-  #   <<: *inventario
-  #   environment:
-  #     <<: *inventario-env
-  #     RAFT_NODO_ID: inventario-1
-  #     MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo1   # D2: una base por nodo
-  #   ports: ["3201:3200"]               # solo para diagnóstico y prueba de failover
-  #   networks:
-  #     backend:
-  #       aliases: [inventario-service]  # D1: los 3 nodos responden al mismo nombre
+  inventario-2:
+    <<: *inventario
+    environment:
+      <<: *inventario-env
+      RAFT_NODO_ID: inventario-2
+      MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo2
+    ports: ["3202:3200"]
+    networks:
+      backend:
+        aliases: [inventario-service]
 
-  # inventario-2:
-  #   <<: *inventario
-  #   environment:
-  #     <<: *inventario-env
-  #     RAFT_NODO_ID: inventario-2
-  #     MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo2
-  #   ports: ["3202:3200"]
-  #   networks:
-  #     backend:
-  #       aliases: [inventario-service]
+  inventario-3:
+    <<: *inventario
+    environment:
+      <<: *inventario-env
+      RAFT_NODO_ID: inventario-3
+      MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo3
+    ports: ["3203:3200"]
+    networks:
+      backend:
+        aliases: [inventario-service]
 
-  # inventario-3:
-  #   <<: *inventario
-  #   environment:
-  #     <<: *inventario-env
-  #     RAFT_NODO_ID: inventario-3
-  #     MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo3
-  #   ports: ["3203:3200"]
-  #   networks:
-  #     backend:
-  #       aliases: [inventario-service]
-
-  # ventas-service:
-  #   build: ./services/ventas
-  #   image: grupo/ventas:tp6
-  #   environment:
-  #     SERVICE_NAME: ventas-service
-  #     PORT: 3300
-  #     MONGODB_URI: mongodb://ventas-db:27017/ventas
-  #     CATALOGO_SERVICE_URL: http://catalogo-service:3100
-  #     INVENTARIO_SERVICE_URL: http://inventario-service:3200   # D1: alias de los 3 nodos
-  #     HTTP_TIMEOUT_MS: 3000
-  #     LOG_LEVEL: ${LOG_LEVEL:-info}
-  #   ports: ["3300:3300"]
-  #   depends_on:
-  #     ventas-db: { condition: service_healthy }
-  #     # A propósito NO depende de Catálogo ni de Inventario: si no están, responde 503
-  #   healthcheck:
-  #     test: ["CMD", "node", "-e", "fetch('http://localhost:3300/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-  #     interval: 10s
-  #     timeout: 3s
-  #     retries: 5
-  #     start_period: 20s
-  #   restart: on-failure
-  #   networks: [backend]
+  ventas-service:
+    build: ./services/ventas
+    image: grupo/ventas:tp6
+    environment:
+      SERVICE_NAME: ventas-service
+      PORT: 3300
+      MONGODB_URI: mongodb://ventas-db:27017/ventas
+      CATALOGO_SERVICE_URL: http://catalogo-service:3100
+      INVENTARIO_SERVICE_URL: http://inventario-service:3200   # D1: alias de los 3 nodos
+      HTTP_TIMEOUT_MS: 3000
+      REINTENTO_REINTEGRO_MS: ${REINTENTO_REINTEGRO_MS:-30000}   # se puede bajar en las pruebas
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["3300:3300"]
+    depends_on:
+      ventas-db: { condition: service_healthy }
+      # A propósito NO depende de Catálogo ni de Inventario: si no están, responde 503
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3300/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: on-failure
+    networks: [backend]
 
 # Las bases, Redis y los puertos Raft no se publican al host: solo los usan los
 # contenedores, por nombre DNS dentro de esta red.
