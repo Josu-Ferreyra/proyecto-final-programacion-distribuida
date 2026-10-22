@@ -37,6 +37,75 @@ flowchart LR
     INVAPI -->|"C4 · GET /productos/:id<br/>(solo alta de stock)"| CATAPI
 ```
 
+## Despliegue en el TP6 (Docker Compose)
+
+El diagrama de arriba es la arquitectura lógica del TP5 y sigue valiendo. Este muestra cómo
+quedó desplegada en el TP6 con [`compose.yml`](../compose.yml): los contenedores, la red
+`backend`, los puertos y los volúmenes. Detalle en [`09-ejecucion-docker.md`](./09-ejecucion-docker.md).
+
+```mermaid
+flowchart LR
+    CLI["Cliente en la PC<br/>(curl / Swagger / scripts)"]
+
+    subgraph NET["Red Docker backend"]
+        direction LR
+
+        subgraph CAT["Catálogo"]
+            CATAPI["catalogo-service<br/>:3100"]
+            CATDB[("catalogo-db<br/>mongo:7<br/>base catalogo")]
+            CATAPI --- CATDB
+        end
+
+        subgraph INV["Inventario · cluster Raft · alias DNS inventario-service"]
+            INV1["inventario-1<br/>API :3200 · Raft :4200"]
+            INV2["inventario-2<br/>API :3200 · Raft :4200"]
+            INV3["inventario-3<br/>API :3200 · Raft :4200"]
+            INVDB[("inventario-db<br/>mongo:7<br/>inventario_nodo1..3")]
+            REDIS[["redis<br/>lock interno"]]
+            INV1 <-.->|Raft| INV2
+            INV2 <-.->|Raft| INV3
+            INV1 <-.->|Raft| INV3
+            INV1 --- INVDB
+            INV2 --- INVDB
+            INV3 --- INVDB
+            INV1 --- REDIS
+            INV2 --- REDIS
+            INV3 --- REDIS
+        end
+
+        subgraph VEN["Ventas"]
+            VENAPI["ventas-service<br/>:3300"]
+            VENDB[("ventas-db<br/>mongo:7<br/>base ventas")]
+            VENAPI --- VENDB
+        end
+    end
+
+    CLI -->|"localhost:3100"| CATAPI
+    CLI -->|"localhost:3201 · 3202 · 3203"| INV
+    CLI -->|"localhost:3300"| VENAPI
+
+    VENAPI -->|"C1 · http://catalogo-service:3100"| CATAPI
+    VENAPI -->|"C2 · C3 · http://inventario-service:3200"| INV
+    INV -->|"C4 · http://catalogo-service:3100"| CATAPI
+
+    VOLC[/"volumen catalogo-data"/] -.- CATDB
+    VOLI[/"volumen inventario-data"/] -.- INVDB
+    VOLV[/"volumen ventas-data"/] -.- VENDB
+```
+
+| Elemento | Significado |
+|---|---|
+| Recuadro dentro de la red | Un contenedor. El texto es su nombre DNS en Compose y su puerto **interno** |
+| Flecha desde el Cliente | Puerto **publicado** en la PC. Las bases, Redis y el puerto Raft 4200 no se publican |
+| Flecha entre servicios | Llamada HTTP con la URL que usa el servicio dentro de la red (C1–C4) |
+| Línea punteada entre nodos | RPC interno de Raft, solo dentro de la red |
+| Paralelogramo | Volumen con nombre: los datos sobreviven a `docker compose down` |
+
+Lo que cambió respecto del diagrama lógico, y por qué, está en
+[`arquitectura.md`](./arquitectura.md#tp6-cambios-respecto-del-tp5): los followers reenvían
+las escrituras al Leader y los 3 nodos comparten el alias `inventario-service` (D1), y las 3
+bases de Inventario están en un solo contenedor (D2).
+
 ## Cómo leer el diagrama
 
 | Elemento | Significado |
@@ -62,7 +131,9 @@ flowchart LR
 - **El lock de Redis/Memurai pasa a ser interno de Inventario.** Hoy lo toma el
   controller de productos. En la propuesta solo lo conoce el dueño del stock.
 - **Los puertos 3100/3200/3300 son de referencia:** no coinciden con los 3001–3003 de los
-  nodos Raft actuales para no confundir "nodo" con "servicio".
+  nodos Raft actuales para no confundir "nodo" con "servicio". En el TP6 quedaron como
+  puertos reales; los 3 nodos de Inventario escuchan en el 3200 interno y se publican en
+  3201–3203 (ver el diagrama de despliegue).
 
 ## Control de coherencia
 
