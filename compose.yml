@@ -1,0 +1,164 @@
+# Entorno completo del TP6: los tres microservicios con sus bases, en una red interna.
+# Convenciones (nombres, puertos, variables): docs/08-ratificacion-tp6.md §8.3.
+# Red, puertos y volúmenes explicados en docs/09-ejecucion-docker.md.
+#
+#   docker compose up --build -d
+#   docker compose ps          (todos tienen que llegar a "healthy")
+#   docker compose down        (conserva los datos; "down -v" los borra)
+name: proyecto-distribuido
+
+x-mongo-healthcheck: &mongo-healthcheck
+  test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 10s
+
+# Configuración común a los 3 nodos de Inventario. Cada nodo agrega su identidad
+# (RAFT_NODO_ID) y su base (MONGODB_URI).
+x-inventario: &inventario
+  build: ./services/inventario
+  image: grupo/inventario:tp6
+  depends_on:
+    inventario-db: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://localhost:3200/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 10s
+    timeout: 3s
+    retries: 5
+    start_period: 20s
+  restart: on-failure
+
+x-inventario-env: &inventario-env
+  SERVICE_NAME: inventario-service
+  PORT: 3200
+  CLUSTER_FILE: cluster.docker.json
+  REDIS_URL: redis://redis:6379
+  CATALOGO_SERVICE_URL: http://catalogo-service:3100
+  HTTP_TIMEOUT_MS: 3000
+  RAFT_COMMIT_TIMEOUT_MS: 2500       # D3: menor que los 3000 ms de Ventas
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  # Una base por servicio: ningún servicio accede a la base de otro. Los datos viven
+  # en volúmenes con nombre, así que sobreviven a "docker compose down".
+  catalogo-db:
+    image: mongo:7
+    volumes: [catalogo-data:/data/db]
+    healthcheck: *mongo-healthcheck
+    networks: [backend]
+
+  inventario-db:                       # D2: una base por nodo dentro del mismo servidor
+    image: mongo:7
+    volumes: [inventario-data:/data/db]
+    healthcheck: *mongo-healthcheck
+    networks: [backend]
+
+  ventas-db:
+    image: mongo:7
+    volumes: [ventas-data:/data/db]
+    healthcheck: *mongo-healthcheck
+    networks: [backend]
+
+  # Lock interno de Inventario. Ningún otro servicio se conecta.
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [backend]
+
+  catalogo-service:
+    build: ./services/catalogo
+    image: grupo/catalogo:tp6
+    environment:
+      SERVICE_NAME: catalogo-service
+      PORT: 3100
+      MONGODB_URI: mongodb://catalogo-db:27017/catalogo
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["3100:3100"]
+    depends_on:
+      catalogo-db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: on-failure
+    networks: [backend]
+
+  # ---------------------------------------------------------------------------
+  # Inventario (Parte 2) y Ventas (Parte 3): se descomentan cuando exista el
+  # Dockerfile de cada servicio. Mientras tanto, Compose levanta Catálogo solo.
+  # ---------------------------------------------------------------------------
+
+  # inventario-1:
+  #   <<: *inventario
+  #   environment:
+  #     <<: *inventario-env
+  #     RAFT_NODO_ID: inventario-1
+  #     MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo1   # D2: una base por nodo
+  #   ports: ["3201:3200"]               # solo para diagnóstico y prueba de failover
+  #   networks:
+  #     backend:
+  #       aliases: [inventario-service]  # D1: los 3 nodos responden al mismo nombre
+
+  # inventario-2:
+  #   <<: *inventario
+  #   environment:
+  #     <<: *inventario-env
+  #     RAFT_NODO_ID: inventario-2
+  #     MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo2
+  #   ports: ["3202:3200"]
+  #   networks:
+  #     backend:
+  #       aliases: [inventario-service]
+
+  # inventario-3:
+  #   <<: *inventario
+  #   environment:
+  #     <<: *inventario-env
+  #     RAFT_NODO_ID: inventario-3
+  #     MONGODB_URI: mongodb://inventario-db:27017/inventario_nodo3
+  #   ports: ["3203:3200"]
+  #   networks:
+  #     backend:
+  #       aliases: [inventario-service]
+
+  # ventas-service:
+  #   build: ./services/ventas
+  #   image: grupo/ventas:tp6
+  #   environment:
+  #     SERVICE_NAME: ventas-service
+  #     PORT: 3300
+  #     MONGODB_URI: mongodb://ventas-db:27017/ventas
+  #     CATALOGO_SERVICE_URL: http://catalogo-service:3100
+  #     INVENTARIO_SERVICE_URL: http://inventario-service:3200   # D1: alias de los 3 nodos
+  #     HTTP_TIMEOUT_MS: 3000
+  #     LOG_LEVEL: ${LOG_LEVEL:-info}
+  #   ports: ["3300:3300"]
+  #   depends_on:
+  #     ventas-db: { condition: service_healthy }
+  #     # A propósito NO depende de Catálogo ni de Inventario: si no están, responde 503
+  #   healthcheck:
+  #     test: ["CMD", "node", "-e", "fetch('http://localhost:3300/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+  #     start_period: 20s
+  #   restart: on-failure
+  #   networks: [backend]
+
+# Las bases, Redis y los puertos Raft no se publican al host: solo los usan los
+# contenedores, por nombre DNS dentro de esta red.
+networks:
+  backend: {}
+
+volumes:
+  catalogo-data:
+  inventario-data:
+  ventas-data:
