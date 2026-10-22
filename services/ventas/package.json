@@ -6,7 +6,8 @@
   "type": "commonjs",
   "main": "src/server.js",
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/server.js"
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "mock": "node dev/mocks.js"
   },
   "engines": {
     "node": ">=24"
