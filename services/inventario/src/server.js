@@ -1,0 +1,71 @@
+// Arranque de UN nodo del cluster de Inventario. Los tres nodos son el mismo código:
+// lo que cambia es RAFT_NODO_ID y MONGODB_URI (y CLUSTER_FILE según el entorno).
+//
+//   npm start                       (lee .env si existe)
+//   docker compose up               (las variables las pasa compose.yml)
+
+const http = require('node:http');
+const mongoose = require('mongoose');
+const config = require('./config/env');
+const logger = require('./config/logger');
+const { conectarConReintentos } = require('./config/db');
+const { cargarTopologia } = require('./config/cluster');
+const { crearNodoRaft } = require('./raft');
+const stateMachine = require('./stock/stateMachine');
+const { crearStockService } = require('./stock/services/stockService');
+const { crearCatalogoClient } = require('./clients/catalogoClient');
+const { crearApp } = require('./app');
+
+async function main() {
+  const cluster = cargarTopologia({ archivo: config.clusterFile, nodoId: config.raftNodoId, puerto: config.port });
+  logger.info('Iniciando nodo de Inventario', {
+    operacion: 'arranque',
+    topologia: cluster.archivo,
+    apiPort: cluster.nodo.apiHttpPort,
+    raftPort: cluster.nodo.raftPort,
+    peers: cluster.peers.map((p) => p.id),
+  });
+
+  await conectarConReintentos(config.mongodbUri);
+  await mongoose.syncIndexes(); // índices únicos (productoId, referencia, índice del log)
+
+  const raft = crearNodoRaft({ cluster, aplicar: stateMachine.aplicar, logger, config: config.raft });
+  await raft.iniciar();
+
+  const catalogo = crearCatalogoClient({ baseUrl: config.catalogoServiceUrl, timeoutMs: config.httpTimeoutMs, logger });
+  const stockService = crearStockService({ raft, catalogo, config, logger });
+
+  const soloEscrituraEnLeader = (req, res, next) => {
+    if (raft.esLeader()) return next();
+    res.status(503).json({ error: 'Este nodo no es el Leader de Inventario', servicio: config.serviceName });
+  };
+
+  const app = crearApp({ config, logger, raft, stockService, soloEscrituraEnLeader });
+  const servidor = http.createServer(app);
+  await new Promise((resolve, reject) => {
+    servidor.once('error', reject);
+    servidor.listen(cluster.nodo.apiHttpPort, resolve);
+  });
+  logger.info(`API escuchando en el puerto ${cluster.nodo.apiHttpPort} (docs: /api-docs)`, { operacion: 'arranque' });
+
+  // Recién con los puertos abiertos arranca el election timer.
+  await raft.escuchar();
+
+  let cerrando = false;
+  const apagar = async (senial) => {
+    if (cerrando) return;
+    cerrando = true;
+    logger.info('Deteniendo nodo', { operacion: 'apagado', senial });
+    raft.detener();
+    servidor.close();
+    await mongoose.disconnect();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => apagar('SIGINT'));
+  process.on('SIGTERM', () => apagar('SIGTERM'));
+}
+
+main().catch((err) => {
+  logger.error('Error fatal al iniciar el nodo', { operacion: 'arranque', error: err.message });
+  process.exit(1);
+});
