@@ -16,6 +16,7 @@ const { crearStockService } = require('./stock/services/stockService');
 const { crearCatalogoClient } = require('./clients/catalogoClient');
 const { crearRedisClient } = require('./lib/redisClient');
 const { crearLock } = require('./lib/lock');
+const { crearReenviarAlLeader } = require('./middlewares/reenviarAlLeader');
 const { crearApp } = require('./app');
 
 async function main() {
@@ -39,10 +40,7 @@ async function main() {
   const lock = crearLock({ client: redis, ttlMs: config.lockTtlMs, esperaMs: config.lockEsperaMs, logger });
   const stockService = crearStockService({ raft, catalogo, lock, config, logger });
 
-  const soloEscrituraEnLeader = (req, res, next) => {
-    if (raft.esLeader()) return next();
-    res.status(503).json({ error: 'Este nodo no es el Leader de Inventario', servicio: config.serviceName });
-  };
+  const soloEscrituraEnLeader = crearReenviarAlLeader({ raft, config, logger });
 
   const app = crearApp({ config, logger, raft, stockService, soloEscrituraEnLeader });
   const servidor = http.createServer(app);
