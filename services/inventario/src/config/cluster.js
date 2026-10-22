@@ -1,6 +1,6 @@
 // Topología del cluster de Inventario.
 //
-// En el TP4 había un cluster.json fijo con 127.0.0.1. Ahora el archivo se elige con
+// En el TP4 había un cluster.json fijo con la IP local. Ahora el archivo se elige con
 // CLUSTER_FILE (cluster.local.json para npm start, cluster.docker.json en Compose) y
 // este proceso se identifica con RAFT_NODO_ID. Así el mismo código corre en los dos
 // entornos cambiando solo configuración.
