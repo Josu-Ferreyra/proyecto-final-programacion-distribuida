@@ -17,6 +17,9 @@ certs/
 logs/
 npm-debug.log*
 
+# Ids generados por scripts/seed.js (los asigna Catálogo en cada laboratorio)
+scripts/.datos-prueba.json
+
 # Builds, cobertura y temporales
 dist/
 build/
