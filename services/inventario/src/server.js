@@ -14,6 +14,8 @@ const { crearNodoRaft } = require('./raft');
 const stateMachine = require('./stock/stateMachine');
 const { crearStockService } = require('./stock/services/stockService');
 const { crearCatalogoClient } = require('./clients/catalogoClient');
+const { crearRedisClient } = require('./lib/redisClient');
+const { crearLock } = require('./lib/lock');
 const { crearApp } = require('./app');
 
 async function main() {
@@ -33,7 +35,9 @@ async function main() {
   await raft.iniciar();
 
   const catalogo = crearCatalogoClient({ baseUrl: config.catalogoServiceUrl, timeoutMs: config.httpTimeoutMs, logger });
-  const stockService = crearStockService({ raft, catalogo, config, logger });
+  const redis = crearRedisClient({ url: config.redisUrl, logger });
+  const lock = crearLock({ client: redis, ttlMs: config.lockTtlMs, esperaMs: config.lockEsperaMs, logger });
+  const stockService = crearStockService({ raft, catalogo, lock, config, logger });
 
   const soloEscrituraEnLeader = (req, res, next) => {
     if (raft.esLeader()) return next();
@@ -58,6 +62,7 @@ async function main() {
     logger.info('Deteniendo nodo', { operacion: 'apagado', senial });
     raft.detener();
     servidor.close();
+    await redis.quit().catch(() => {});
     await mongoose.disconnect();
     process.exit(0);
   };
