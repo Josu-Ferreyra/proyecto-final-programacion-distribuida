@@ -1,0 +1,7 @@
+{
+  "nodos": [
+    { "id": "inventario-1", "host": "localhost", "apiHttpPort": 3201, "raftPort": 4201 },
+    { "id": "inventario-2", "host": "localhost", "apiHttpPort": 3202, "raftPort": 4202 },
+    { "id": "inventario-3", "host": "localhost", "apiHttpPort": 3203, "raftPort": 4203 }
+  ]
+}
