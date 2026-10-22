@@ -1,0 +1,24 @@
+{
+  "name": "inventario-service",
+  "version": "1.0.0",
+  "description": "TP6 Programación Distribuida - Servicio de Inventario: única autoridad sobre las unidades disponibles, replicado en un cluster Raft de 3 nodos",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "estado": "node scripts/estado-cluster.js",
+    "comparar": "node scripts/comparar-bases.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "mongoose": "^8.9.5",
+    "redis": "^4.7.1",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.17.0"
+  }
+}
