@@ -56,6 +56,10 @@ dos modos (3201–3203), así que los scripts de diagnóstico (`estado-cluster.j
 
 4. `git status` → ningún archivo de `src/` cambió entre un modo y el otro.
 
-> **Estado:** los pasos 1 y 2 están verificados para Inventario. Los pasos 3 y 4 se completan
-> cuando estén integrados en `compose.yml` los bloques de Inventario (hoy comentados en
-> `feature/compose-integration`, a la espera de este Dockerfile) y el servicio de Ventas.
+> **Estado para Inventario:** los pasos 1 y 2 están verificados. Además, la misma imagen corrió
+> como los 3 nodos en contenedores con solo cambiar variables (`CLUSTER_FILE=cluster.docker.json`,
+> `MONGODB_URI=mongodb://inventario-db:27017/…`, `REDIS_URL=redis://redis:6379`,
+> `CATALOGO_SERVICE_URL=http://catalogo-service:3100`), sin tocar el código
+> ([evidencias](./evidencias/inventario-pruebas.md#8-los-3-nodos-en-docker)). La corrida completa
+> con `docker compose up` se hace cuando estén descomentados en `compose.yml` los bloques de
+> Inventario y de Ventas.

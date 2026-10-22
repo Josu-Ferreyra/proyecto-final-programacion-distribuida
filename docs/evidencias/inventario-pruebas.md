@@ -1,7 +1,8 @@
 # Evidencias · Inventario (Parte 2)
 
-Pruebas corridas en modo local (`npm start`) el 22/10/2026, con MongoDB y Redis locales, el
-Catálogo real en 3100 y los 3 nodos de Inventario con `CLUSTER_FILE=cluster.local.json`.
+Pruebas corridas el 22/10/2026, primero en modo local (`npm start`, secciones 1–7), con MongoDB y Redis locales, el
+Catálogo real en 3100 y los 3 nodos de Inventario con `CLUSTER_FILE=cluster.local.json`, y después
+con los 3 nodos en contenedores (sección 8).
 Cada sección incluye los comandos para repetirla (bash; en PowerShell usar `curl.exe`).
 
 Para levantar el entorno:
@@ -110,12 +111,52 @@ grep -rnE "localhost|127\.0\.0\.1|mongodb://|redis://" services/inventario/src  
 ```
 
 Inventario no conoce otras bases. Catálogo ya no tiene stock, y la única forma de cambiar el
-stock desde afuera es pedirlo por C2/C3. La versión con `docker compose exec … mongosh` queda
-para cuando el cluster esté integrado en Compose.
+stock desde afuera es pedirlo por C2/C3. La misma verificación en contenedores está en la
+sección 8.
 
-## Pendiente
+## 8. Los 3 nodos en Docker
 
-- Evidencia de Docker (`docker --version`, `docker compose version`, `docker info`,
-  `hello-world`) y build de la imagen: Docker Desktop no arrancaba en el equipo (WSL sin
-  distribución instalada).
-- Failover, propiedad de datos y configuración por entorno repetidos en Compose.
+Evidencia de la instalación de Docker: [`docker-vicente.md`](./docker-vicente.md).
+
+Misma imagen para los 3 nodos; solo cambian las variables. Red de prueba equivalente a la de
+Compose (cuando los bloques de Inventario estén descomentados en `compose.yml`, se reemplaza
+por `docker compose up --build`):
+
+```bash
+docker build -t grupo/inventario:tp6 ./services/inventario
+docker network create tp6-prueba
+docker run -d --name inventario-db --network tp6-prueba mongo:7
+docker run -d --name redis --network tp6-prueba redis:7-alpine
+docker run -d --name catalogo-db --network tp6-prueba mongo:7
+docker build -t grupo/catalogo:tp6 ./services/catalogo
+docker run -d --name catalogo-service --network tp6-prueba -p 3100:3100 \
+  -e PORT=3100 -e MONGODB_URI=mongodb://catalogo-db:27017/catalogo grupo/catalogo:tp6
+for n in 1 2 3; do
+  docker run -d --name inventario-$n --network tp6-prueba --network-alias inventario-service -p 320$n:3200 \
+    -e PORT=3200 -e RAFT_NODO_ID=inventario-$n -e CLUSTER_FILE=cluster.docker.json \
+    -e MONGODB_URI=mongodb://inventario-db:27017/inventario_nodo$n -e REDIS_URL=redis://redis:6379 \
+    -e CATALOGO_SERVICE_URL=http://catalogo-service:3100 -e RAFT_COMMIT_TIMEOUT_MS=2500 grupo/inventario:tp6
+done
+node services/inventario/scripts/estado-cluster.js
+```
+
+| Prueba | Resultado |
+|---|---|
+| Build de la imagen | `grupo/inventario:tp6`, 310 MB |
+| Elección | `inventario-1` LEADER (votos de `inventario-1` e `inventario-2`), los otros FOLLOWER; `/health` 200 en 3201–3203 |
+| Logs | JSON por stdout con `servicio` y `nodo` (`docker logs inventario-1`): `MongoDB conectado`, `Redis conectado`, `Soy LEADER` |
+| Desde la red, como lo haría Ventas: `http://inventario-service:3200` (el alias puede caer en cualquier nodo) | `PUT /stock` 200 · `POST /descuentos` 201. Un `GET /stock` inmediato devolvió el valor anterior porque cayó en un follower que todavía no había aplicado la entrada (lectura local, R11) |
+| `docker stop inventario-1` (el Leader) y escritura por el alias | `503` inmediato; a los 11 s `201` con `inventario-2` LEADER (término 3) |
+| `docker start inventario-1` y `docker exec inventario-2 node scripts/comparar-bases.js` | **CONVERGEN** (los 3 en término 3, `lastApplied` 5, stock 6 en 3201–3203) |
+| `docker stop redis` | `POST /descuentos` → `503` en 0,005 s · `GET /stock` → `200`; con `docker start redis` vuelve a `201` |
+
+Propiedad de datos en contenedores:
+
+```text
+$ docker exec inventario-db mongosh --quiet --eval "db.adminCommand({listDatabases:1}).databases.map(d=>d.name)"
+admin, config, inventario_nodo1, inventario_nodo2, inventario_nodo3, local
+$ docker exec inventario-db mongosh inventario_nodo1 --quiet --eval "db.getCollectionNames()"
+descuentos, movimientos, raft_estado, raft_log, stock        (igual en inventario_nodo2 y 3)
+$ docker exec catalogo-db mongosh catalogo --quiet --eval "db.getCollectionNames()"
+productos
+```

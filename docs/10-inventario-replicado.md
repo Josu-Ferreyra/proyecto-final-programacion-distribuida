@@ -156,7 +156,10 @@ Detalle y comandos para repetirlas en [`evidencias/inventario-pruebas.md`](./evi
 | Nodo caído que vuelve | ✅ se pone al día; `comparar-bases.js` → CONVERGEN |
 | Caso 2 del TP5 corregido | ✅ ver abajo |
 | Redis caído | ✅ escrituras `503` en 37 ms, lecturas `200`; se recupera solo |
-| Imagen Docker y cluster en Compose | ⏳ pendiente (Docker no disponible en el equipo al momento de escribir esto) |
+| Imagen Docker (`docker build`) | ✅ `grupo/inventario:tp6` |
+| Los 3 nodos en contenedores con `cluster.docker.json` y el alias `inventario-service` | ✅ eligen Leader; C2/C3/C4 funcionan llamando a `http://inventario-service:3200` desde la red |
+| Failover en Docker (`docker stop` del Leader) | ✅ `503` controlado y a los 11 s `201`; al volver, las 3 bases CONVERGEN |
+| Redis caído en Docker (`docker stop redis`) | ✅ escrituras `503`, lecturas `200`; con `docker start redis` vuelve a `201` |
 
 **El Caso 2, corregido.** Con `DESCUENTO_DELAY_MS=3000` y `LOCK_WAIT_MS=5000`, partiendo de stock 10:
 
