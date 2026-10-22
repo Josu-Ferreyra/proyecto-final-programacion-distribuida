@@ -167,6 +167,15 @@ El índice de pruebas de la sección 18, con su responsable, el comando para rep
 evidencia, está en [`docs/13-pruebas.md`](docs/13-pruebas.md). Prueba rápida de punta a
 punta: `node scripts/smoke-test.js`.
 
+Las evidencias se generan con la salida real de los comandos, y antes de entregar se revisa
+la lista de la sección 21 del TP:
+
+```bash
+node scripts/generar-evidencias.js lista                 # pruebas disponibles
+node scripts/generar-evidencias.js health --sobrescribir # una prueba (escribe docs/evidencias/health.md)
+node scripts/verificar-entrega.js                        # controles de la entrega (no necesita Docker)
+```
+
 ## 15. Si una dependencia no está disponible
 
 | Si se cae… | Pasa |

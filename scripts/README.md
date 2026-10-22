@@ -7,6 +7,8 @@ base. Requieren Node.js 18 o superior y no tienen dependencias (no hace falta `n
 | Script | Qué hace |
 |---|---|
 | `seed.js` | Deja un estado inicial conocido: 4 productos en Catálogo y su stock en Inventario. Guarda los ids en `scripts/.datos-prueba.json` |
+| `generar-evidencias.js` | Corre las pruebas obligatorias contra el entorno levantado y guarda comandos + salida real en `docs/evidencias/` (`lista` muestra las disponibles, `parte1` regenera las de Compose, `--sobrescribir` pisa un archivo existente) |
+| `verificar-entrega.js` | Controles de la sección 21 sin Docker: archivos de cada servicio, `.dockerignore`, `compose.yml`, secretos y basura versionados, README, vínculos entre documentos, evidencias, tags y autores. Termina con código 1 si falla algo |
 | `smoke-test.js` | Recorre los casos de uso de punta a punta con el código esperado en cada paso y termina con `N OK, M FAIL` (código de salida 1 si algo falla) |
 
 ## Qué carga el seed
