@@ -107,6 +107,23 @@ divide de más: las categorías son un conjunto de valores que valida y expone C
 | **Fuera de alcance** | Decidir si hay stock suficiente: lo pide, no lo calcula ni lo consulta antes (Inventario) · Tomar locks o tocar Redis · Modificar precios o productos (Catálogo) · Reponer o ajustar stock. |
 | **Justificación** | Resuelve el **Caso 3**: la compra deja de ser una función que valida, bloquea, decide el stock y arma comandos de consenso. Ventas solo coordina y registra, y cada decisión queda en su dueño. Agrega el dato que hoy falta (no hay historial ni precio al momento de la compra), que es una responsabilidad nueva con reglas propias (precio congelado, total, estados, cancelación) y no una tabla inventada. Habilita lo que hoy obliga a reescribir `comprarProducto`: comprar varios productos en una operación y cancelar. Sus dependencias van en un solo sentido: ni Catálogo ni Inventario saben que Ventas existe. |
 
+### Servicio: auth-service (TP7)
+
+Agregado en el TP7 (decisión D8 de [`14-modelo-seguridad.md`](./14-modelo-seguridad.md)). Diseño
+completo en [`15-identidad.md`](./15-identidad.md).
+
+| Elemento | Definición |
+|---|---|
+| **Nombre** | Servicio de identidad (`auth-service`) |
+| **Responsabilidad principal** | Ser la única autoridad sobre las credenciales: registrar usuarios, verificar quién es cada uno y emitir el token que lo acredita ante los demás servicios. |
+| **Operaciones** | Registrarse como cliente · Iniciar sesión y obtener un access token · Consultar la propia identidad · Dar de alta otro administrador o cliente (solo `ADMIN`) · Habilitar o deshabilitar una cuenta (solo `ADMIN`) · Crear al arrancar el primer `ADMIN` y la cuenta técnica de Ventas. |
+| **Reglas de negocio** | Email único, sin espacios y en minúsculas · Password de 8 a 72 caracteres, guardada solo como hash bcrypt (costo 12) · El auto-registro siempre crea `CLIENTE` (D11) · Usuario inexistente y password incorrecta responden lo mismo (`401`) · Una cuenta deshabilitada no hace login (`403`, D12) · El token dura 15 minutos y lleva solo `sub`, `role`, `iss`, `iat` y `exp`, firmado con HS256 (D9) · Las cuentas `SERVICIO` no se crean por la API · Un `ADMIN` no puede deshabilitarse a sí mismo. |
+| **Datos propios** | Usuario: `id`, `email`, `passwordHash`, `rol` (`CLIENTE` / `ADMIN` / `SERVICIO`), `activo`, `createdAt`, `updatedAt`. En su propia base `auth-db`. |
+| **Endpoints** | *Nuevos:* `POST /auth/register` · `POST /auth/login` · `GET /auth/me` · `POST /auth/usuarios` · `PATCH /auth/usuarios/:id` · `GET /health` · `/api-docs`. |
+| **Dependencias** | Ninguna. Ventas lo llama solo para hacer login con su cuenta técnica (D13); Catálogo, Inventario y Ventas validan los tokens localmente, sin consultarlo (D15). |
+| **Fuera de alcance** | Productos, stock y compras · Decidir qué puede hacer cada rol en otro servicio (lo decide cada servicio con su middleware) · Validar los tokens en cada request de los demás · Revocar tokens ya emitidos. |
+| **Justificación** | El TP6 no tenía un dueño de la identidad. Ponerla en Ventas mezclaba credenciales con compras y obligaba a Catálogo e Inventario a depender de Ventas para autorizar. Un servicio aparte concentra las passwords en un solo lugar, y como los tokens se validan localmente no agrega una dependencia en tiempo de ejecución: si se cae, solo fallan el login y el registro. |
+
 ---
 
 ## 4.3 Tabla general de responsabilidades
@@ -116,6 +133,7 @@ divide de más: las categorías son un conjunto de valores que valida y expone C
 | Catálogo | Definir qué se ofrece y a qué precio | Productos (nombre, precio vigente, categoría, activo), categorías válidas | Alta, modificación, baja lógica, consulta y búsqueda de productos; listar categorías | Ninguna |
 | Inventario | Controlar las unidades disponibles y que nunca se vendan de más | Stock por producto, descuentos por referencia, movimientos | Consultar disponibilidad, alta y ajuste de stock, descontar (todo o nada), reintegrar, ver movimientos | Catálogo, solo al dar de alta stock (C4) |
 | Ventas | Concretar compras y llevar su ciclo de vida | Compras e ítems (con nombre y precio pagado) | Registrar, consultar y cancelar compras | Catálogo (C1), Inventario (C2, C3) |
+| auth-service (TP7) | Ser la única autoridad sobre las credenciales | Usuarios (email, hash de la password, rol, activo) | Registro, login y emisión del JWT, altas y bajas administradas | Ninguna |
 
 Las dependencias no forman ciclos: **Ventas → Catálogo**, **Ventas → Inventario** e
 **Inventario → Catálogo**. Catálogo no depende de nadie, así que se puede desplegar y probar
@@ -145,6 +163,8 @@ Las columnas **Responsable** y **Estado** se agregaron en la ratificación del T
 | `GET /api/cluster/estado`, `GET /api/cluster/log` | Cada servicio replicado | Mismos paths, sobre su propio cluster | Diagnóstico, no negocio. | Vicente | probado |
 | `POST /raft/request-vote`, `POST /raft/append-entries`, `GET /raft/estado` | Módulo Raft dentro de cada servicio replicado | Mismos paths, puerto interno | Infraestructura; no forman parte de la API pública. | Vicente | probado |
 | `/api-docs` | Cada servicio | `/api-docs` | Cada servicio documenta solo su propia API. | Los tres, cada uno el suyo | probado (los tres) |
+| — (TP7) | auth-service | `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `POST /auth/usuarios`, `PATCH /auth/usuarios/:id` | Nuevos: identidad, hash de passwords y emisión del JWT. El TP4 no tenía usuarios. | Ferreyra | probado |
+| `POST`/`PUT`/`DELETE /productos` (TP7) | Catálogo | Mismos paths | Piden un JWT con rol `ADMIN`: `401` sin token o con token inválido, `403` con otro rol. Los `GET` siguen públicos. | Ferreyra | probado |
 
 ## 4.5 Coherencia con la Parte 3
 

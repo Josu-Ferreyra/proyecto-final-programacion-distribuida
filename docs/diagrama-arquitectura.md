@@ -106,6 +106,67 @@ Lo que cambió respecto del diagrama lógico, y por qué, está en
 las escrituras al Leader y los 3 nodos comparten el alias `inventario-service` (D1), y las 3
 bases de Inventario están en un solo contenedor (D2).
 
+## Despliegue en el TP7 (con auth-service)
+
+El TP7 agrega `auth-service` y su base. Las flechas C1–C4 son las mismas; lo nuevo son los
+tokens. Decisiones en [`14-modelo-seguridad.md`](./14-modelo-seguridad.md), identidad en
+[`15-identidad.md`](./15-identidad.md).
+
+```mermaid
+flowchart LR
+    CLI["Cliente en la PC<br/>(curl / Swagger / scripts)"]
+
+    subgraph NET["Red Docker backend"]
+        direction LR
+
+        subgraph AUTH["Identidad"]
+            AUTHAPI["auth-service<br/>:3400<br/>registro · login · emite JWT"]
+            AUTHDB[("auth-db<br/>mongo:7<br/>usuarios (passwordHash)")]
+            AUTHAPI --- AUTHDB
+        end
+
+        subgraph CAT["Catálogo"]
+            CATAPI["catalogo-service<br/>:3100<br/>valida JWT local"]
+            CATDB[("catalogo-db")]
+            CATAPI --- CATDB
+        end
+
+        subgraph INV["Inventario · 3 nodos Raft · alias inventario-service"]
+            INVAPI["inventario-1 · -2 · -3<br/>:3200<br/>valida JWT local"]
+            INVDB[("inventario-db")]
+            REDIS[["redis"]]
+            INVAPI --- INVDB
+            INVAPI --- REDIS
+        end
+
+        subgraph VEN["Ventas"]
+            VENAPI["ventas-service<br/>:3300<br/>valida JWT local"]
+            VENDB[("ventas-db")]
+            VENAPI --- VENDB
+        end
+    end
+
+    CLI -->|"1 · POST /auth/login → accessToken"| AUTHAPI
+    CLI -->|"2 · Authorization: Bearer (escrituras ADMIN)"| CATAPI
+    CLI -->|"2 · Authorization: Bearer (PUT /stock ADMIN)"| INVAPI
+    CLI -->|"2 · Authorization: Bearer (compras CLIENTE)"| VENAPI
+
+    VENAPI -->|"login de la cuenta técnica (SERVICIO)<br/>solo cuando vence su token"| AUTHAPI
+    VENAPI -->|"C1 · sin token"| CATAPI
+    VENAPI -->|"C2 · C3 · Bearer token SERVICIO<br/>+ usuarioId del cliente"| INVAPI
+    INVAPI -->|"C4 · sin token"| CATAPI
+
+    VOLA[/"volumen auth-data"/] -.- AUTHDB
+```
+
+| Elemento | Significado |
+|---|---|
+| "valida JWT local" | Cada servicio verifica firma, emisor y vencimiento con `JWT_SECRET`, **sin consultar** a `auth-service` (D15). Por eso las únicas flechas hacia `auth-service` son los logins |
+| Ventas → auth-service | La única llamada entre servicios nueva: Ventas obtiene su token `SERVICIO` y lo reusa hasta 1 minuto antes de que venza (D13) |
+| C2 · C3 con token `SERVICIO` | Inventario sabe que la operación la autorizó Ventas, y para qué cliente (`usuarioId`). Un `CLIENTE` que llame directo a `POST /descuentos` recibe `403` |
+| C1 · C4 sin token | Son `GET` públicos: la consulta de la oferta no necesita identidad |
+| 11 contenedores | `auth-db` y `auth-service` se suman a los 9 del TP6 (los volúmenes `catalogo-data`, `inventario-data` y `ventas-data` siguen igual que arriba) |
+
 ## Cómo leer el diagrama
 
 | Elemento | Significado |
