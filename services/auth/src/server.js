@@ -5,6 +5,7 @@ const config = require('./config/env');
 const logger = require('./config/logger');
 const { conectarConReintentos } = require('./config/db');
 const { Usuario } = require('./models/usuario.model');
+const { crearCuentasIniciales } = require('./services/bootstrap');
 const { crearApp } = require('./app');
 
 async function main() {
@@ -12,6 +13,7 @@ async function main() {
 
   await conectarConReintentos(config.mongodbUri);
   await Usuario.syncIndexes(); // índice único de email antes de aceptar altas
+  await crearCuentasIniciales(); // primer ADMIN y cuenta de Ventas (D11)
 
   const servidor = crearApp().listen(config.port, () => {
     logger.info(`API escuchando en el puerto ${config.port} (docs: /api-docs)`, { operacion: 'arranque' });
