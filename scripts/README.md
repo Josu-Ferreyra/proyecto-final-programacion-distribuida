@@ -10,6 +10,7 @@ base. Requieren Node.js 18 o superior y no tienen dependencias (no hace falta `n
 | `generar-evidencias.js` | Corre las pruebas obligatorias contra el entorno levantado y guarda comandos + salida real en `docs/evidencias/` (`lista` muestra las disponibles, `parte1` regenera las de Compose, `--sobrescribir` pisa un archivo existente) |
 | `verificar-entrega.js` | Controles de la sección 21 sin Docker: archivos de cada servicio, `.dockerignore`, `compose.yml`, secretos y basura versionados, README, vínculos entre documentos, evidencias, tags y autores. Termina con código 1 si falla algo |
 | `smoke-test.js` | Recorre los casos de uso de punta a punta con el código esperado en cada paso y termina con `N OK, M FAIL` (código de salida 1 si algo falla) |
+| `token.js` | Herramienta de pruebas del TP7: genera un access token JWT firmado igual que los de `auth-service`, con el rol que se pida, vencido o firmado con otra clave. Necesita `JWT_SECRET`. Ver [Tokens de prueba](#tokens-de-prueba-tp7) |
 
 ## Qué carga el seed
 
@@ -67,6 +68,43 @@ la misma en los dos modos. Para apuntar a otras direcciones:
 CATALOGO_URL=http://localhost:3100 node scripts/seed.js
 # PowerShell: $env:CATALOGO_URL='http://localhost:3100'; node scripts/seed.js
 ```
+
+## Tokens de prueba (TP7)
+
+`token.js` genera tokens con los mismos claims que emite `auth-service` (`sub`, `role`, `iss`, `iat`,
+`exp`; ver [`docs/14-modelo-seguridad.md`](../docs/14-modelo-seguridad.md) §14.5), para probar la
+protección de cada servicio sin depender de que `auth-service` esté levantado.
+
+**No es una forma de saltear el login:** no es un endpoint, corre en la máquina de quien prueba y
+necesita conocer `JWT_SECRET`, que solo está en el `.env` (no versionado). Los usuarios reales obtienen
+su token con `POST /auth/login`.
+
+| Comando | Token que genera | Prueba del TP7 |
+|---|---|---|
+| `node scripts/token.js --rol ADMIN` | ADMIN válido por 15 minutos | I |
+| `node scripts/token.js --rol CLIENTE --sub cliente-1` | CLIENTE con ese `sub` | H |
+| `node scripts/token.js --rol SERVICIO` | Cuenta técnica (como la de Ventas) | — |
+| `node scripts/token.js --rol ADMIN --vencido` | Venció hace un minuto | G |
+| `node scripts/token.js --rol ADMIN --secreto-falso` | Firmado con otra clave | F |
+| `node scripts/token.js --rol ADMIN --minutos 1` | Vence en un minuto | G (esperando) |
+| `node scripts/token.js --rol ADMIN --decodificar` | Muestra el payload en lugar del token | — |
+
+Lee `JWT_SECRET` (y `JWT_ISSUER`, por defecto `auth-service`) del entorno o del `.env` de la raíz, e
+imprime solo el token:
+
+```bash
+TOKEN=$(node scripts/token.js --rol ADMIN)
+curl -X PUT localhost:3201/stock/<productoId> -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"cantidad":10}'
+```
+
+```powershell
+$TOKEN = node scripts/token.js --rol ADMIN
+curl.exe -X PUT localhost:3201/stock/<productoId> -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{\"cantidad\":10}'
+```
+
+No pegues tokens completos en evidencias, issues ni commits. Si hace falta mostrar uno, cortalo
+(`eyJhbGciOi…`) o mostrá el payload con `--decodificar`.
 
 ## Reiniciar desde cero
 
