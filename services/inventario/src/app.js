@@ -14,7 +14,7 @@ function endpoint(req) {
 
 // API pública del nodo. Las dependencias (nodo Raft, servicio de stock, middleware de
 // escritura) se reciben por parámetro: no hay singletons globales.
-function crearApp({ config, logger, raft, stockService, soloEscrituraEnLeader }) {
+function crearApp({ config, logger, raft, stockService, soloEscrituraEnLeader, auth }) {
   const app = express();
   const servicio = config.serviceName;
 
@@ -34,11 +34,11 @@ function crearApp({ config, logger, raft, stockService, soloEscrituraEnLeader })
   app.use('/health', crearHealthRouter({ serviceName: servicio, nodoId: config.raftNodoId }));
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(spec));
   app.get('/api-docs.json', (req, res) => res.json(spec));
-  app.use('/api/cluster', crearClusterRouter({ raft }));
+  app.use('/api/cluster', crearClusterRouter({ raft, auth }));
 
   const controller = crearStockController({ stockService });
   app.use(['/stock', '/descuentos', '/movimientos'], requiereDb);
-  app.use(crearStockRouter({ controller, soloEscrituraEnLeader }));
+  app.use(crearStockRouter({ controller, soloEscrituraEnLeader, auth }));
 
   app.use((req, res) => {
     res.status(404).json({ error: 'Ruta no encontrada', servicio });
