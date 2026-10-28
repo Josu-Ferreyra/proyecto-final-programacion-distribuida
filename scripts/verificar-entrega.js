@@ -69,12 +69,16 @@ for (const nombre of ['catalogo-service', 'inventario-1', 'inventario-2', 'inven
 }
 control('compose', 'tiene healthchecks y depends_on con service_healthy', /healthcheck:/.test(compose) && /service_healthy/.test(compose));
 control('compose', 'declara volúmenes con nombre y red', /^volumes:/m.test(compose) && /^networks:/m.test(compose));
-control('compose', 'las bases y Redis no publican puertos al host',
-  !/^  (catalogo-db|inventario-db|ventas-db|redis):[\s\S]*?\n {4}ports:/m.test(compose.split(/^  catalogo-service:/m)[0]));
-control('compose', 'no hay contraseñas, tokens ni claves en compose.yml', !/(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S+/i.test(compose));
+// Bloque de un servicio: desde "  nombre:" hasta el siguiente servicio o sección de primer nivel.
+const bloqueDe = (nombre) => (compose.match(new RegExp(`^  ${nombre}:\\n[\\s\\S]*?(?=^  \\S|^\\S|(?![\\s\\S]))`, 'm')) || [''])[0];
+const basesConPuerto = ['catalogo-db', 'inventario-db', 'ventas-db', 'auth-db', 'redis'].filter((s) => /^ {4}ports:/m.test(bloqueDe(s)));
+control('compose', 'las bases y Redis no publican puertos al host', basesConPuerto.length === 0, basesConPuerto.join(', '));
+// Un secreto solo puede llegar por interpolación desde el .env (${JWT_SECRET:?…}, D16), nunca escrito.
+control('compose', 'no hay contraseñas, tokens ni claves en compose.yml', !/(?<!\$\{\w*)(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*(?!\$\{)\S+/i.test(compose));
 control('compose', 'ningún bloque de servicio sigue comentado', !/^\s*#\s+(inventario-[123]|ventas-service):/m.test(compose));
 if (spawnSync('docker', ['compose', 'version'], { encoding: 'utf8' }).status === 0) {
-  const r = spawnSync('docker', ['compose', 'config', '-q'], { cwd: RAIZ, encoding: 'utf8' });
+  // Con .env.example: valida la sintaxis sin depender de los secretos de cada uno (y sin mostrarlos).
+  const r = spawnSync('docker', ['compose', '--env-file', '.env.example', 'config', '-q'], { cwd: RAIZ, encoding: 'utf8' });
   control('compose', 'docker compose config valida el archivo', r.status === 0, r.stderr);
 } else {
   aviso('compose', 'docker compose no está disponible: no se validó la sintaxis', true, 'correr "docker compose config -q"');
