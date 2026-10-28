@@ -8,16 +8,21 @@ es configuración. Diseño completo en [`docs/10-inventario-replicado.md`](../..
 
 | Endpoint | Qué hace |
 |---|---|
-| `GET /stock?productoIds=a,b` | Disponibilidad (0 si no hay stock registrado) |
-| `PUT /stock/:productoId` `{ cantidad }` | Alta (verifica con Catálogo, C4) o ajuste |
-| `POST /descuentos` `{ referencia, items }` | C2: descuento todo o nada, idempotente por referencia |
-| `DELETE /descuentos/:referencia` | C3: reintegra exactamente lo descontado |
-| `GET /movimientos?productoId=…` | Historial de cambios |
-| `GET /api/cluster/estado` · `GET /api/cluster/log` | Diagnóstico Raft del nodo |
+| `GET /stock?productoIds=a,b` | Disponibilidad (0 si no hay stock registrado). **Público** |
+| `PUT /stock/:productoId` `{ cantidad }` | Alta (verifica con Catálogo, C4) o ajuste. **ADMIN** |
+| `POST /descuentos` `{ referencia, items, usuarioId }` | C2: descuento todo o nada, idempotente por referencia. **SERVICIO o ADMIN** |
+| `DELETE /descuentos/:referencia` | C3: reintegra exactamente lo descontado. **SERVICIO o ADMIN** |
+| `GET /movimientos?productoId=…` | Historial de cambios, con el `usuarioId` de cada uno. **ADMIN** |
+| `GET /api/cluster/estado` · `GET /api/cluster/log` | Diagnóstico Raft del nodo. El estado es **público**; el log, **ADMIN** |
 | `GET /health` | `{ service, nodo, status }` |
 
 Swagger: `http://localhost:3201/api-docs` (o 3202, 3203). Los RPC internos de Raft se documentan
 en `http://localhost:4201/raft-docs` (solo entre nodos, no se publican en Compose).
+
+Los endpoints protegidos piden `Authorization: Bearer <token>` (TP7). El token se obtiene con
+`POST /auth/login` en `auth-service`, o para pruebas con `node scripts/token.js --rol ADMIN` desde la
+raíz. Sin token, con token vencido o mal firmado: `401`. Con un rol que no alcanza: `403`. Detalle en
+`docs/16-validacion-jwt.md`.
 
 ## Ejecución local
 
