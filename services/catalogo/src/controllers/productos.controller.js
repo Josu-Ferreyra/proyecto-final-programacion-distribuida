@@ -16,19 +16,19 @@ async function obtenerProducto(req, res) {
 
 async function crearProducto(req, res) {
   const producto = await productosService.crear(req.body || {});
-  logger.info('Producto creado', { operacion: 'productos.crear', id: producto.id, nombre: producto.nombre });
+  logger.info('Producto creado', { operacion: 'productos.crear', id: producto.id, nombre: producto.nombre, usuarioId: req.usuario.id });
   res.status(201).json(producto);
 }
 
 async function actualizarProducto(req, res) {
   const producto = await productosService.actualizar(req.params.id, req.body || {});
-  logger.info('Producto actualizado', { operacion: 'productos.actualizar', id: producto.id });
+  logger.info('Producto actualizado', { operacion: 'productos.actualizar', id: producto.id, usuarioId: req.usuario.id });
   res.status(200).json(producto);
 }
 
 async function eliminarProducto(req, res) {
   await productosService.eliminar(req.params.id);
-  logger.info('Producto dado de baja', { operacion: 'productos.baja', id: req.params.id });
+  logger.info('Producto dado de baja', { operacion: 'productos.baja', id: req.params.id, usuarioId: req.usuario.id });
   res.status(204).send();
 }
 
