@@ -26,7 +26,13 @@ function crearReenviarAlLeader({ raft, config, logger }) {
     try {
       const respuesta = await fetch(`${leader.apiUrl}${req.originalUrl}`, {
         method: req.method,
-        headers: { 'Content-Type': 'application/json', 'X-Reenviado-Por': config.raftNodoId },
+        // El Authorization original viaja al Leader, que vuelve a validar el token: no confía en que
+        // el follower ya lo hizo (D13). Sin este header, toda escritura por un follower daría 401.
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Reenviado-Por': config.raftNodoId,
+          ...(req.get('Authorization') ? { Authorization: req.get('Authorization') } : {}),
+        },
         body: ['GET', 'HEAD', 'DELETE'].includes(req.method) ? undefined : JSON.stringify(req.body ?? {}),
         signal: AbortSignal.timeout(timeoutMs),
       });
