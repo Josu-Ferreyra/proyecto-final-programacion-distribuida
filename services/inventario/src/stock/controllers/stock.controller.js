@@ -13,18 +13,20 @@ function crearStockController({ stockService }) {
 
   async function fijarStock(req, res) {
     const { cantidad } = req.body || {};
-    res.status(200).json(await stockService.fijar(req.params.productoId, cantidad));
+    // Quién ajustó: el ADMIN autenticado.
+    res.status(200).json(await stockService.fijar(req.params.productoId, cantidad, req.usuario.id));
   }
 
   async function crearDescuento(req, res) {
-    const { referencia, items } = req.body || {};
-    const resultado = await stockService.descontar(referencia, items);
+    // usuarioId: para quién fue la compra (lo manda Ventas, D13). Si no viene, el que pidió el descuento.
+    const { referencia, items, usuarioId } = req.body || {};
+    const resultado = await stockService.descontar(referencia, items, usuarioId ?? req.usuario.id);
     // 201 descontado ahora · 200 esa referencia ya se había descontado (idempotente)
     res.status(resultado.creado ? 201 : 200).json({ referencia: resultado.referencia, items: resultado.items });
   }
 
   async function reintegrarDescuento(req, res) {
-    await stockService.reintegrar(req.params.referencia);
+    await stockService.reintegrar(req.params.referencia, req.usuario.id);
     res.status(204).end();
   }
 

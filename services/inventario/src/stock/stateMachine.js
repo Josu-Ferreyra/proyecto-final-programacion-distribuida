@@ -35,7 +35,7 @@ async function registrarMovimiento(mov) {
   );
 }
 
-async function fijarStock({ productoId, cantidad, fecha }, index) {
+async function fijarStock({ productoId, cantidad, usuarioId, fecha }, index) {
   const actual = await Stock.findOne({ productoId });
   if (actual && actual.ultimoIndiceRaft >= index) {
     return { estado: 'APLICADO', productoId, stock: actual.cantidad }; // ya aplicada
@@ -52,6 +52,7 @@ async function fijarStock({ productoId, cantidad, fecha }, index) {
     tipo: actual ? 'AJUSTE' : 'ALTA',
     cantidad: cantidad - anterior,
     stockResultante: cantidad,
+    usuarioId,
     fecha,
     indiceRaft: index,
   });
@@ -59,7 +60,8 @@ async function fijarStock({ productoId, cantidad, fecha }, index) {
 }
 
 // Todo o nada: si a algún ítem no le alcanza el stock, no se descuenta ninguno.
-async function descontar({ referencia, items, fecha }, index) {
+// usuarioId viene dentro del comando (D13): la State Machine no lee tokens ni hace HTTP.
+async function descontar({ referencia, items, usuarioId, fecha }, index) {
   const previo = await Descuento.findOne({ referencia }).lean();
   if (previo) {
     // Misma referencia ya procesada (reintento de Ventas, o re-aplicación tras reinicio).
@@ -94,6 +96,7 @@ async function descontar({ referencia, items, fecha }, index) {
       cantidad: -item.cantidad,
       stockResultante: resultante,
       referencia,
+      usuarioId,
       fecha,
       indiceRaft: index,
     });
@@ -101,14 +104,14 @@ async function descontar({ referencia, items, fecha }, index) {
 
   await Descuento.updateOne(
     { referencia },
-    { $setOnInsert: { referencia, items, estado: 'APLICADO', fecha, indiceRaft: index } },
+    { $setOnInsert: { referencia, items, usuarioId, estado: 'APLICADO', fecha, indiceRaft: index } },
     { upsert: true }
   );
   return { estado: 'APLICADO', referencia, items };
 }
 
 // Devuelve exactamente lo descontado con esa referencia.
-async function reintegrar({ referencia, fecha }, index) {
+async function reintegrar({ referencia, usuarioId, fecha }, index) {
   const descuento = await Descuento.findOne({ referencia });
   if (!descuento) return { estado: 'NO_EXISTE', referencia };
   if (descuento.estado === 'REINTEGRADO') return { estado: 'YA_REINTEGRADO', referencia };
@@ -126,6 +129,7 @@ async function reintegrar({ referencia, fecha }, index) {
       cantidad: item.cantidad,
       stockResultante: actual ? actual.cantidad : item.cantidad,
       referencia,
+      usuarioId,
       fecha,
       indiceRaft: index,
     });

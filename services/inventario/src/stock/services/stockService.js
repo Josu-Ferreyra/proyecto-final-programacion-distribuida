@@ -30,6 +30,13 @@ function validarReferencia(referencia) {
   }
 }
 
+// usuarioId es una referencia lógica a un usuario de auth-service (el sub del token): solo se guarda.
+function validarUsuarioId(usuarioId) {
+  if (typeof usuarioId !== 'string' || !ID_VALIDO.test(usuarioId)) {
+    throw solicitudInvalida('El usuarioId debe ser un identificador de hasta 64 caracteres (letras, números, "-" o "_")');
+  }
+}
+
 function validarItems(items) {
   if (!Array.isArray(items) || items.length === 0 || items.length > MAX_ITEMS) {
     throw solicitudInvalida(`"items" debe ser una lista de 1 a ${MAX_ITEMS} elementos { productoId, cantidad }`);
@@ -98,8 +105,9 @@ function crearStockService({ raft, catalogo, lock, config, logger }) {
   }
 
   // PUT /stock/:productoId -> alta (con C4) o ajuste.
-  async function fijar(productoId, cantidad) {
+  async function fijar(productoId, cantidad, usuarioId) {
     validarProductoId(productoId);
+    validarUsuarioId(usuarioId);
     if (!Number.isInteger(cantidad) || cantidad < 0) {
       throw solicitudInvalida('La "cantidad" debe ser un entero mayor o igual a 0');
     }
@@ -117,6 +125,7 @@ function crearStockService({ raft, catalogo, lock, config, logger }) {
         tipo: existe ? TIPOS.AJUSTAR_STOCK : TIPOS.ALTA_STOCK,
         productoId,
         cantidad,
+        usuarioId,
         fecha: new Date().toISOString(), // la fija el Leader: igual en todas las réplicas
       };
       logger.info(existe ? 'Propongo ajuste de stock' : 'Propongo alta de stock', { operacion: comando.tipo, productoId, cantidad });
@@ -126,9 +135,10 @@ function crearStockService({ raft, catalogo, lock, config, logger }) {
   }
 
   // POST /descuentos (C2): todo o nada, idempotente por referencia.
-  async function descontar(referencia, itemsCrudos) {
+  async function descontar(referencia, itemsCrudos, usuarioId) {
     validarReferencia(referencia);
     const items = validarItems(itemsCrudos);
+    validarUsuarioId(usuarioId);
 
     return lock.conLock(items.map((i) => i.productoId), async () => {
       const previo = await Descuento.findOne({ referencia }).lean();
@@ -147,8 +157,8 @@ function crearStockService({ raft, catalogo, lock, config, logger }) {
 
       if (config.descuentoDelayMs > 0) await delay(config.descuentoDelayMs);
 
-      logger.info('Propongo descuento de stock', { operacion: TIPOS.DESCONTAR, referencia, items });
-      const resultado = await proponer({ tipo: TIPOS.DESCONTAR, referencia, items, fecha: new Date().toISOString() });
+      logger.info('Propongo descuento de stock', { operacion: TIPOS.DESCONTAR, referencia, items, usuarioId });
+      const resultado = await proponer({ tipo: TIPOS.DESCONTAR, referencia, items, usuarioId, fecha: new Date().toISOString() });
 
       if (resultado.estado === 'RECHAZADO') {
         throw conflicto('Stock insuficiente', { faltantes: resultado.faltantes });
@@ -158,8 +168,9 @@ function crearStockService({ raft, catalogo, lock, config, logger }) {
   }
 
   // DELETE /descuentos/:referencia (C3): reintegra exactamente lo descontado.
-  async function reintegrar(referencia) {
+  async function reintegrar(referencia, usuarioId) {
     validarReferencia(referencia);
+    validarUsuarioId(usuarioId);
 
     const descuento = await Descuento.findOne({ referencia }).lean();
     if (!descuento) throw noEncontrado(`No hay un descuento con la referencia ${referencia}`);
@@ -167,7 +178,7 @@ function crearStockService({ raft, catalogo, lock, config, logger }) {
 
     await lock.conLock(descuento.items.map((i) => i.productoId), async () => {
       logger.info('Propongo reintegro de stock', { operacion: TIPOS.REINTEGRAR, referencia });
-      const resultado = await proponer({ tipo: TIPOS.REINTEGRAR, referencia, fecha: new Date().toISOString() });
+      const resultado = await proponer({ tipo: TIPOS.REINTEGRAR, referencia, usuarioId, fecha: new Date().toISOString() });
       if (resultado.estado === 'NO_EXISTE') throw noEncontrado(`No hay un descuento con la referencia ${referencia}`);
     });
   }
