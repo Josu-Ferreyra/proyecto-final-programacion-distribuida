@@ -3,9 +3,21 @@ const config = require('./env');
 
 // Especificación OpenAPI escrita como objeto (y no con comentarios en las rutas)
 // para poder tomar las categorías del mismo módulo que usa el schema.
-const json = (schema) => ({ 'application/json': { schema } });
+// TP7: los endpoints protegidos se marcan con proteger() al final, con los mismos roles que
+// productos.routes.js (matriz de docs/14-modelo-seguridad.md).
+const json = (schema, example) => ({ 'application/json': example === undefined ? { schema } : { schema, example } });
 const ref = (nombre) => ({ $ref: `#/components/schemas/${nombre}` });
 const respuesta = (nombre) => ({ $ref: `#/components/responses/${nombre}` });
+
+// Marca un endpoint como protegido: esquema Bearer, roles en la descripción y respuestas 401 y 403.
+function proteger(operacion, roles) {
+  operacion.security = [{ bearerAuth: [] }];
+  const rolesTexto = roles.map((r) => '`' + r + '`').join(' o ');
+  const nota = '**Requiere** `Authorization: Bearer <token>` con rol ' + rolesTexto + '.';
+  operacion.description = operacion.description ? nota + '\n\n' + operacion.description : nota;
+  operacion.responses[401] = respuesta('NoAutenticado');
+  operacion.responses[403] = respuesta('SinPermiso');
+}
 
 const parametroId = {
   in: 'path',
@@ -19,11 +31,14 @@ const parametroId = {
 const spec = {
   openapi: '3.0.3',
   info: {
-    title: 'Servicio de Catálogo - TP6 Programación Distribuida',
+    title: 'Servicio de Catálogo - TP7 Programación Distribuida',
     version: '1.0.0',
     description:
       'Define qué productos se ofrecen, con qué nombre, en qué categoría y a qué precio.\n\n' +
-      'No guarda stock: la disponibilidad se consulta en Inventario (`GET /stock?productoIds=…`).',
+      'No guarda stock: la disponibilidad se consulta en Inventario (`GET /stock?productoIds=…`).\n\n' +
+      '**Seguridad (TP7):** las consultas (`GET`) son públicas. Dar de alta, modificar o dar de baja un ' +
+      'producto pide un access token JWT de `auth-service` con rol `ADMIN` (`POST http://localhost:3400/auth/login`, ' +
+      'y después el botón *Authorize*). Sin token, con token vencido o mal firmado: `401`. Con otro rol: `403`.',
   },
   // Relativo: Swagger UI llama al mismo host y puerto desde el que se abrió.
   servers: [{ url: '/', description: config.serviceName }],
@@ -153,6 +168,9 @@ const spec = {
     },
   },
   components: {
+    securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Access token de auth-service (POST /auth/login)' },
+    },
     schemas: {
       Producto: {
         type: 'object',
@@ -191,6 +209,14 @@ const spec = {
       },
     },
     responses: {
+      NoAutenticado: {
+        description: 'Sin identidad válida: token ausente, mal formado, mal firmado o vencido',
+        content: json(ref('Error'), { error: 'Token ausente', servicio: config.serviceName }),
+      },
+      SinPermiso: {
+        description: 'Identidad válida, pero el rol no alcanza para esta operación',
+        content: json(ref('Error'), { error: 'Permisos insuficientes', servicio: config.serviceName }),
+      },
       BadRequest: { description: 'Datos, parámetros o id con formato inválido, o campos que no son de Catálogo (como stock)', content: json(ref('Error')) },
       NotFound: { description: 'El producto no existe', content: json(ref('Error')) },
       Conflict: { description: 'Ya existe un producto con ese nombre', content: json(ref('Error')) },
@@ -198,5 +224,9 @@ const spec = {
     },
   },
 };
+
+proteger(spec.paths['/productos'].post, ['ADMIN']);
+proteger(spec.paths['/productos/{id}'].put, ['ADMIN']);
+proteger(spec.paths['/productos/{id}'].delete, ['ADMIN']);
 
 module.exports = spec;
