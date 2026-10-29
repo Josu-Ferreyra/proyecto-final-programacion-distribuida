@@ -6,10 +6,10 @@ base. Requieren Node.js 18 o superior y no tienen dependencias (no hace falta `n
 
 | Script | Qué hace |
 |---|---|
-| `seed.js` | Deja un estado inicial conocido: 4 productos en Catálogo y su stock en Inventario. Guarda los ids en `scripts/.datos-prueba.json` |
+| `seed.js` | Deja un estado inicial conocido: 4 productos en Catálogo y su stock en Inventario (con login de ADMIN), y los 2 clientes de prueba. Guarda los ids en `scripts/.datos-prueba.json` |
 | `generar-evidencias.js` | Corre las pruebas obligatorias contra el entorno levantado y guarda comandos + salida real en `docs/evidencias/` (`lista` muestra las disponibles, `parte1` regenera las de Compose, `--sobrescribir` pisa un archivo existente) |
 | `verificar-entrega.js` | Controles de la sección 21 sin Docker: archivos de cada servicio, `.dockerignore`, `compose.yml`, secretos y basura versionados, README, vínculos entre documentos, evidencias, tags y autores. Termina con código 1 si falla algo |
-| `smoke-test.js` | Recorre los casos de uso de punta a punta con el código esperado en cada paso y termina con `N OK, M FAIL` (código de salida 1 si algo falla) |
+| `smoke-test.js` | Recorre los casos de uso de punta a punta, incluidas la autenticación (401), la autorización (403) y la propiedad de las compras, con el código esperado en cada paso, y termina con `N OK, M FAIL` (código de salida 1 si algo falla) |
 | `token.js` | Herramienta de pruebas del TP7: genera un access token JWT firmado igual que los de `auth-service`, con el rol que se pida, vencido o firmado con otra clave. Necesita `JWT_SECRET`. Ver [Tokens de prueba](#tokens-de-prueba-tp7) |
 
 ## Qué carga el seed
@@ -62,12 +62,28 @@ la misma en los dos modos. Para apuntar a otras direcciones:
 | `CATALOGO_URL` | `http://localhost:3100` | los dos |
 | `INVENTARIO_URL` | `http://localhost:3201` | los dos (cualquier nodo: los followers reenvían las escrituras al Leader) |
 | `VENTAS_URL` | `http://localhost:3300` | `smoke-test.js` |
+| `AUTH_URL` | `http://localhost:3400` | los dos (login) |
+| `ADMIN_EMAIL` · `ADMIN_PASSWORD` | los del `.env` de la raíz | los dos: el seed escribe con el ADMIN, el smoke test lo usa para las operaciones administrativas |
 | `INVENTARIO_NODOS` | `http://localhost:3201,http://localhost:3202,http://localhost:3203` | `smoke-test.js` (chequeo de `/health` de cada nodo) |
 
 ```bash
 CATALOGO_URL=http://localhost:3100 node scripts/seed.js
 # PowerShell: $env:CATALOGO_URL='http://localhost:3100'; node scripts/seed.js
 ```
+
+### Usuarios de prueba (TP7)
+
+Las escrituras de Catálogo e Inventario piden rol `ADMIN`: el seed hace login con el ADMIN que crea
+`auth-service` al arrancar (`ADMIN_EMAIL` / `ADMIN_PASSWORD` del `.env` de la raíz) y además registra dos
+clientes. Sus passwords son **datos ficticios de laboratorio**, no secretos, y están en
+`scripts/lib/auth-pruebas.js`:
+
+| Usuario | Password | Rol |
+|---|---|---|
+| `cliente1@tp7.local` | `cliente1-de-prueba` | `CLIENTE` |
+| `cliente2@tp7.local` | `cliente2-de-prueba` | `CLIENTE` |
+
+El smoke test compra con `cliente1` y comprueba que `cliente2` no pueda ver ni cancelar esa compra (403).
 
 ## Tokens de prueba (TP7)
 
