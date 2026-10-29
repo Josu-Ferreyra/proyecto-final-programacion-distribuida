@@ -47,6 +47,12 @@ const config = Object.freeze({
   // JWT (TP7, D9 y D16): mismo secreto y emisor que auth-service y los demás servicios.
   jwtSecret: secretoJwt(),
   jwtIssuer: process.env.JWT_ISSUER || 'auth-service',
+
+  // Cuenta técnica de Ventas (rol SERVICIO, D13): con ella pide el token para llamar a Inventario.
+  // Local: http://localhost:3400 · Compose: http://auth-service:3400.
+  authServiceUrl: obligatoria('AUTH_SERVICE_URL'),
+  ventasServiceEmail: obligatoria('VENTAS_SERVICE_EMAIL'),
+  ventasServicePassword: obligatoria('VENTAS_SERVICE_PASSWORD'),
 });
 
 module.exports = config;

@@ -23,14 +23,15 @@ function clasificar(err) {
 function crearCliente({ nombre, baseUrl, timeoutMs }) {
   const base = baseUrl.replace(/\/+$/, '');
 
-  async function pedir(metodo, ruta, cuerpo) {
+  // headersExtra: por ejemplo { Authorization: 'Bearer …' } (TP7). Nunca se loguean.
+  async function pedir(metodo, ruta, cuerpo, headersExtra = {}) {
     const operacion = `${metodo} ${ruta.split('?')[0]}`;
     const inicio = Date.now();
     let res;
     try {
       res = await fetch(`${base}${ruta}`, {
         method: metodo,
-        headers: cuerpo ? { 'Content-Type': 'application/json' } : undefined,
+        headers: { ...(cuerpo ? { 'Content-Type': 'application/json' } : {}), ...headersExtra },
         body: cuerpo ? JSON.stringify(cuerpo) : undefined,
         signal: AbortSignal.timeout(timeoutMs), // timeout explícito: nunca una espera indefinida
       });
@@ -66,9 +67,9 @@ function crearCliente({ nombre, baseUrl, timeoutMs }) {
   }
 
   return {
-    get: (ruta) => pedir('GET', ruta),
-    post: (ruta, cuerpo) => pedir('POST', ruta, cuerpo),
-    delete: (ruta) => pedir('DELETE', ruta),
+    get: (ruta, headers) => pedir('GET', ruta, undefined, headers),
+    post: (ruta, cuerpo, headers) => pedir('POST', ruta, cuerpo, headers),
+    delete: (ruta, headers) => pedir('DELETE', ruta, undefined, headers),
   };
 }
 

@@ -15,12 +15,17 @@
 //   caido     C1, C2 y C3 responden 503
 //
 // Cuando estén los servicios reales se apaga el mock y se cambia solo el .env.
+//
+// TP7: también simula el login de la cuenta técnica de Ventas en auth-service (puerto 3400). El
+// token que devuelve no está firmado de verdad: Ventas solo lee su exp, y el mock de Inventario no
+// valida tokens. Para probar la validación real hay que usar los servicios reales.
 
 const http = require('node:http');
 
 const ESCENARIO = process.env.MOCK_ESCENARIO || 'ok';
 const PUERTO_CATALOGO = Number(process.env.MOCK_CATALOGO_PORT) || 3100;
 const PUERTO_INVENTARIO = Number(process.env.MOCK_INVENTARIO_PORT) || 3201;
+const PUERTO_AUTH = Number(process.env.MOCK_AUTH_PORT) || 3400;
 const ESCENARIOS = ['ok', 'inactivo', 'sin-stock', 'lento', 'caido'];
 
 if (!ESCENARIOS.includes(ESCENARIO)) {
@@ -137,7 +142,22 @@ const inventario = http.createServer(async (req, res) => {
   return responder('inventario', req, res, 404, { error: 'Ruta no encontrada', servicio: 'inventario-service' });
 });
 
+// ---------------------------------------------------------------- auth-service (login de servicio)
+
+const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+
+const auth = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/auth/login') {
+    const ahora = Math.floor(Date.now() / 1000);
+    const payload = { sub: 'mock-ventas-service', role: 'SERVICIO', iss: 'auth-service', iat: ahora, exp: ahora + 900 };
+    const accessToken = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(payload)}.firma-de-mock`;
+    return responder('auth', req, res, 200, { accessToken, tokenType: 'Bearer', expiresIn: 900 });
+  }
+  return responder('auth', req, res, 404, { error: 'Ruta no encontrada', servicio: 'auth-service' });
+});
+
 catalogo.listen(PUERTO_CATALOGO, () => console.log(`Mock de Catálogo en http://localhost:${PUERTO_CATALOGO}`));
 inventario.listen(PUERTO_INVENTARIO, () => console.log(`Mock de Inventario en http://localhost:${PUERTO_INVENTARIO}`));
+auth.listen(PUERTO_AUTH, () => console.log(`Mock de auth-service (login de servicio) en http://localhost:${PUERTO_AUTH}`));
 console.log(`Escenario: ${ESCENARIO}`);
 console.table(PRODUCTOS.map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio, activo: p.activo, stock: stock.get(p.id) })));

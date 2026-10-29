@@ -180,8 +180,13 @@ async function registrarCompra(body, usuario) {
   // C2 · Inventario decide sobre el stock. Ventas nunca consulta el stock antes: pide el
   // descuento e interpreta la respuesta (TP5 §6.1).
   try {
-    await inventario.descontar(compraId, items);
+    await inventario.descontar(compraId, items, usuarioId);
   } catch (err) {
+    // Ventas no pudo autenticarse ante Inventario: auth-service no respondió y el token de
+    // servicio en caché ya venció (D15). El descuento nunca se mandó: no hay nada que compensar.
+    if (err instanceof DependenciaNoDisponible && err.dependencia === 'auth-service') {
+      throw new ErrorNegocio(503, 'No se pudo registrar la compra: Ventas no pudo autenticarse ante Inventario', { dependencia: 'auth-service' });
+    }
     if (err instanceof RespuestaRemota && err.status === 409) {
       if (Array.isArray(err.cuerpo?.faltantes)) {
         throw new ErrorNegocio(409, 'Stock insuficiente', { faltantes: err.cuerpo.faltantes });
