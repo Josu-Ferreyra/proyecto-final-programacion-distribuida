@@ -25,6 +25,9 @@ const ESTADOS = Object.freeze({
 // referencia del descuento (C2) y del reintegro (C3).
 const compraSchema = new mongoose.Schema(
   {
+    // Dueño de la compra (TP7 §11.2): el sub del token del cliente. Es una referencia lógica a
+    // un usuario de auth-service; Ventas guarda el id y nunca consulta la base de usuarios.
+    usuarioId: { type: String, required: true },
     estado: { type: String, enum: Object.values(ESTADOS), required: true },
     reintegroPendiente: { type: Boolean, default: false }, // D7
     items: { type: [itemSchema], required: true },
@@ -43,6 +46,8 @@ const compraSchema = new mongoose.Schema(
 // Lo usa el proceso de reintentos para encontrar los reintegros pendientes.
 compraSchema.index({ estado: 1 });
 compraSchema.index({ reintegroPendiente: 1 });
+// Para consultar las compras de un usuario.
+compraSchema.index({ usuarioId: 1 });
 
 const Compra = mongoose.model('Compra', compraSchema);
 

@@ -19,13 +19,17 @@ const parametroCompraId = {
 const spec = {
   openapi: '3.0.3',
   info: {
-    title: 'Servicio de Ventas - TP6 Programación Distribuida',
+    title: 'Servicio de Ventas - TP7 Programación Distribuida',
     version: '1.0.0',
     description:
       'Concreta las compras de los clientes y lleva su ciclo de vida, dejando constancia de qué se compró, ' +
       'cuánto y a qué precio.\n\n' +
       'Ventas no guarda ni consulta stock: lo pide a Inventario. Tampoco guarda precios vigentes: ' +
-      'los consulta a Catálogo y los congela en cada ítem al confirmar la compra.',
+      'los consulta a Catálogo y los congela en cada ítem al confirmar la compra.\n\n' +
+      '**Seguridad (TP7):** los tres endpoints de compras piden un access token de `auth-service` (botón ' +
+      '*Authorize*) con rol `CLIENTE` o `ADMIN`. La compra queda a nombre del usuario del token. Un `CLIENTE` ' +
+      'solo ve y cancela sus compras; `ADMIN`, todas. Para llamar a Inventario, Ventas usa su propia cuenta de ' +
+      'servicio (rol `SERVICIO`): el token del cliente no viaja a otros servicios (D13).',
   },
   // Relativo: Swagger UI llama al mismo host y puerto desde el que se abrió.
   servers: [{ url: '/', description: config.serviceName }],
@@ -136,6 +140,7 @@ const spec = {
         type: 'object',
         properties: {
           compraId: { type: 'string', example: '65f1a2b3c4d5e6f7a8b9c0d1' },
+          usuarioId: { type: 'string', example: '65f1a2b3c4d5e6f7a8b9c0e2', description: 'Dueño de la compra: el sub del token de quien la registró' },
           estado: { type: 'string', enum: Object.values(ESTADOS) },
           reintegroPendiente: {
             type: 'boolean',
@@ -230,12 +235,32 @@ const spec = {
         ],
       },
     },
+    securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Access token de auth-service (POST /auth/login)' },
+    },
     responses: {
+      NoAutenticado: {
+        description: 'Sin identidad válida: token ausente, mal formado, mal firmado o vencido',
+        content: json(ref('Error')),
+      },
       SolicitudInvalida: { description: 'Datos o identificador inválidos', content: json(ref('Error')) },
       NoEncontrada: { description: 'La compra no existe', content: json(ref('Error')) },
       NoDisponible: { description: 'La base de Ventas no está disponible', content: json(ref('Error')) },
     },
   },
 };
+
+// Endpoints protegidos (matriz de docs/14-modelo-seguridad.md): esquema Bearer, condición de acceso
+// en la descripción y respuestas 401 y 403.
+function proteger(operacion, condicion, descripcion403) {
+  operacion.security = [{ bearerAuth: [] }];
+  operacion.description = '**Requiere** `Authorization: Bearer <token>` · ' + condicion + '\n\n' + operacion.description;
+  operacion.responses[401] = respuesta('NoAutenticado');
+  operacion.responses[403] = { description: descripcion403, content: json(ref('Error')) };
+}
+
+proteger(spec.paths['/compras'].post, 'rol `CLIENTE` o `ADMIN`. La compra queda a nombre del usuario del token.', 'El token es de la cuenta técnica (`SERVICIO`): no puede comprar');
+proteger(spec.paths['/compras/{id}'].get, 'rol `CLIENTE` (solo sus compras) o `ADMIN` (todas).', 'La compra es de otro usuario, o el token es de la cuenta técnica (`SERVICIO`)');
+proteger(spec.paths['/compras/{id}/cancelar'].patch, 'rol `CLIENTE` (solo sus compras) o `ADMIN` (todas).', 'La compra es de otro usuario, o el token es de la cuenta técnica (`SERVICIO`)');
 
 module.exports = spec;

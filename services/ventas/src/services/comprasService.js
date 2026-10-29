@@ -44,6 +44,20 @@ function validarFormato(body) {
   });
 }
 
+// ---------------------------------------------------------------- propiedad (TP7 §11.2)
+
+// Regla de negocio de Ventas: un CLIENTE solo ve y cancela SUS compras; ADMIN, todas. Se compara
+// el sub del token con el usuarioId guardado en la compra (datos propios de Ventas: no se consulta
+// a auth-service).
+function puedeAcceder(compra, usuario) {
+  return usuario.rol === 'ADMIN' || compra.usuarioId === usuario.id;
+}
+
+function rechazarAccesoAjeno(compraId, usuario) {
+  logger.warn('Acceso rechazado a una compra de otro usuario', { operacion: 'compras.propiedad', compraId, usuarioId: usuario.id, rol: usuario.rol });
+  return new ErrorNegocio(403, 'No podés acceder a una compra de otro usuario');
+}
+
 // ---------------------------------------------------------------- C1 · Catálogo
 
 // Catálogo informa; Ventas decide. Un id ausente o un producto inactivo son errores
@@ -94,7 +108,7 @@ function descuentoIncierto(err) {
 // DESPUÉS del 404. Por eso, ante un 404 también se registra el reintegro como pendiente:
 // el reintento de los 30 s lo vuelve a pedir cuando ese descuento atrasado ya terminó
 // (docs/12-comunicacion-y-fallos.md §12.3).
-async function compensar({ compraId, detalle, total, motivo }) {
+async function compensar({ compraId, usuarioId, detalle, total, motivo }) {
   let resultado;
   try {
     await inventario.reintegrar(compraId);
@@ -114,6 +128,7 @@ async function compensar({ compraId, detalle, total, motivo }) {
   try {
     await Compra.create({
       _id: compraId,
+      usuarioId,
       estado: ESTADOS.FALLIDA,
       reintegroPendiente: true,
       items: detalle,
@@ -136,8 +151,10 @@ async function compensar({ compraId, detalle, total, motivo }) {
 // ---------------------------------------------------------------- casos de uso
 
 // POST /compras (TP5 §6.5.1). Reemplaza a comprarProducto del TP4.
-async function registrarCompra(body) {
+// La compra queda a nombre del usuario del token (usuario.id = sub), nunca de algo del body.
+async function registrarCompra(body, usuario) {
   const items = validarFormato(body);
+  const usuarioId = usuario.id;
   const compraId = new mongoose.Types.ObjectId().toString(); // referencia del descuento
 
   // C1 · Catálogo informa: ¿existen?, ¿están activos?, nombre y precio vigente.
@@ -183,47 +200,49 @@ async function registrarCompra(body) {
     const detalleError = { dependencia: err.dependencia };
     if (descuentoIncierto(err)) {
       detalleError.compraId = compraId;
-      detalleError.compensacion = await compensar({ compraId, detalle, total, motivo: `descuento sin confirmar (${err.message})` });
+      detalleError.compensacion = await compensar({ compraId, usuarioId, detalle, total, motivo: `descuento sin confirmar (${err.message})` });
     }
     throw new ErrorNegocio(503, 'Inventario no disponible: no se pudo registrar la compra', detalleError);
   }
 
   // Ventas modifica solo lo suyo. Si no puede guardar, deshace el descuento.
   try {
-    const compra = await Compra.create({ _id: compraId, estado: ESTADOS.CONFIRMADA, items: detalle, total });
-    logger.info('Compra confirmada', { operacion: 'compras.registrar', compraId, total, items: detalle.length });
+    const compra = await Compra.create({ _id: compraId, usuarioId, estado: ESTADOS.CONFIRMADA, items: detalle, total });
+    logger.info('Compra confirmada', { operacion: 'compras.registrar', compraId, usuarioId, total, items: detalle.length });
     return compra;
   } catch (err) {
     logger.error('No se pudo guardar la compra después de descontar el stock', { operacion: 'compras.registrar', compraId, error: err.message });
-    const compensacion = await compensar({ compraId, detalle, total, motivo: 'error al guardar la compra' });
+    const compensacion = await compensar({ compraId, usuarioId, detalle, total, motivo: 'error al guardar la compra' });
     throw new ErrorNegocio(503, 'No se pudo registrar la compra: la base de Ventas no respondió', { compraId, compensacion });
   }
 }
 
 // GET /compras/:id: lee solo la base propia; no llama a nadie (TP5 §5.2).
-async function obtenerCompra(id) {
+async function obtenerCompra(id, usuario) {
   validarCompraId(id);
   const compra = await Compra.findById(id);
   if (!compra) throw new ErrorNegocio(404, `Compra con id ${id} no encontrada`);
+  if (!puedeAcceder(compra, usuario)) throw rechazarAccesoAjeno(id, usuario);
   return compra;
 }
 
 // PATCH /compras/:id/cancelar (TP5 §6.5.2). La regla "solo se cancela una compra
 // CONFIRMADA" es de Ventas; Inventario solo reintegra cuando se lo piden.
-async function cancelarCompra(id) {
+async function cancelarCompra(id, usuario) {
   validarCompraId(id);
 
   // Primero se marca la intención (CONFIRMADA -> CANCELACION_PENDIENTE) de forma atómica:
   // dos cancelaciones simultáneas no pueden pasar las dos, y si Ventas se cae después
   // del reintegro, el reintento de los 30 s termina de cerrarla.
-  const compra = await Compra.findOneAndUpdate(
-    { _id: id, estado: ESTADOS.CONFIRMADA },
-    { estado: ESTADOS.CANCELACION_PENDIENTE },
-    { new: true }
-  );
+  // La regla de propiedad va DENTRO de la misma operación atómica: un CLIENTE solo puede pasar
+  // a CANCELACION_PENDIENTE una compra suya (TP7 §11.2).
+  const filtro = { _id: id, estado: ESTADOS.CONFIRMADA };
+  if (usuario.rol !== 'ADMIN') filtro.usuarioId = usuario.id;
+  const compra = await Compra.findOneAndUpdate(filtro, { estado: ESTADOS.CANCELACION_PENDIENTE }, { new: true });
   if (!compra) {
     const actual = await Compra.findById(id);
     if (!actual) throw new ErrorNegocio(404, `Compra con id ${id} no encontrada`);
+    if (!puedeAcceder(actual, usuario)) throw rechazarAccesoAjeno(id, usuario);
     const motivos = {
       [ESTADOS.CANCELADA]: 'La compra ya está cancelada',
       [ESTADOS.CANCELACION_PENDIENTE]: 'La cancelación de esta compra ya está en curso',
@@ -252,7 +271,7 @@ async function cancelarCompra(id) {
 
   compra.estado = ESTADOS.CANCELADA;
   await compra.save();
-  logger.info('Compra cancelada', { operacion: 'compras.cancelar', compraId: id });
+  logger.info('Compra cancelada', { operacion: 'compras.cancelar', compraId: id, usuarioId: usuario.id, rol: usuario.rol });
   return { status: 200, cuerpo: { compraId: id, estado: ESTADOS.CANCELADA } };
 }
 
