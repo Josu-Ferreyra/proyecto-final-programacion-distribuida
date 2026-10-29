@@ -1,10 +1,12 @@
-# Arquitectura — TP5 y TP6
+# Arquitectura — TP5, TP6 y TP7
 
 Punto de partida: la API de productos del TP4 (cluster Raft de 3 nodos), ubicada en
 [`app-base/`](../app-base/) y marcada con el tag `tp5-base`. En el TP5 se analizó y propuso
 la división en microservicios (tag `tp5-entrega`); en el TP6 se implementó en
 [`services/`](../services/) y se ejecuta con Docker Compose. Los cambios que hubo que hacer
-al implementar están al final, en [TP6: cambios respecto del TP5](#tp6-cambios-respecto-del-tp5).
+al implementar están en [TP6: cambios respecto del TP5](#tp6-cambios-respecto-del-tp5). En el TP7
+se agregó identidad, autenticación y autorización: un servicio nuevo, `auth-service`, y la
+protección de los tres servicios con JWT ([TP7: identidad y seguridad](#tp7-identidad-y-seguridad)).
 
 ## Resumen de la propuesta
 
@@ -59,6 +61,16 @@ cluster (Inventario es el primer candidato). En esta etapa no hay API Gateway.
 | 12 | Comunicación entre servicios y fallos | [12-comunicacion-y-fallos.md](12-comunicacion-y-fallos.md) | Matías Porcari |
 | 13 | Pruebas y evidencias | [13-pruebas.md](13-pruebas.md) | Josué Ferreyra |
 
+**TP7**
+
+| # | Sección | Documento | Autor/a |
+|---|---|---|---|
+| 14 | Modelo de seguridad, matriz de acceso y decisiones D8–D16 | [14-modelo-seguridad.md](14-modelo-seguridad.md) | Santiago Vicente |
+| 15 | Identidad: `auth-service`, usuarios, hash, login y token | [15-identidad.md](15-identidad.md) | Josué Ferreyra |
+| 16 | Validación del JWT en cada servicio | [16-validacion-jwt.md](16-validacion-jwt.md) | Santiago Vicente |
+| 17 | Propagación de la identidad entre servicios | [17-propagacion-identidad.md](17-propagacion-identidad.md) | Matías Porcari |
+| 18 | Pruebas de seguridad y evidencias | [18-pruebas-seguridad.md](18-pruebas-seguridad.md) | Santiago Vicente |
+
 ## TP6: cambios respecto del TP5
 
 Al implementar aparecieron huecos que el TP5 había dejado abiertos. Se resolvieron en la
@@ -84,4 +96,22 @@ cambiaron.
 | La cancelación marca primero `CANCELACION_PENDIENTE` (atómico) y después llama a C3 | Evita dos cancelaciones simultáneas y que una caída de Ventas deje una compra `CONFIRMADA` con el stock ya reintegrado | Estado nuevo en Ventas, cerrado por el proceso de reintentos | Hallazgo de Ventas (`12` §12.7) |
 | El `503` de una compra informa `compraId` y `compensacion` (`reintegrado` / `pendiente`) cuando hubo que compensar | Que el cliente pueda consultar la compra `FALLIDA` y que el fallo sea observable | Campos nuevos en el cuerpo del error | Hallazgo de Ventas (`12` §12.7) |
 | Con la base de Ventas caída, `POST /compras` responde `503` antes de llamar a Catálogo o Inventario | No descontar stock de una compra que después no se podría guardar | Ninguno en los contratos | Hallazgo de Ventas (`12` §12.7) |
+
+## TP7: identidad y seguridad
+
+El TP7 agrega quién es cada usuario y qué puede hacer, **sin cambiar** las responsabilidades, la
+propiedad de los datos ni los contratos C1–C4 del TP6. Las decisiones D8–D16 están en
+[`14-modelo-seguridad.md`](14-modelo-seguridad.md).
+
+| Cambio | Motivo | Impacto | Decisión |
+|---|---|---|---|
+| Servicio nuevo `auth-service` (puerto 3400) con su base `auth-db` | No había un dueño de la identidad; ponerla en Ventas mezclaba credenciales con compras | Cuarto servicio y dos contenedores más (11 en total). Ningún otro servicio accede a `auth-db` | D8 |
+| Access token JWT HS256 de 15 minutos con `sub`, `role`, `iss`, `iat`, `exp` | Que cada servicio pueda autorizar sin consultar a nadie | `JWT_SECRET` en los 4 servicios, por variable de entorno | D9 |
+| Roles `CLIENTE`, `ADMIN` y `SERVICIO` | Separar quién compra, quién administra y la cuenta técnica de Ventas | Matriz de acceso por endpoint | D10 |
+| Escrituras de Catálogo e Inventario solo `ADMIN`; C2 y C3 solo `SERVICIO` o `ADMIN`; compras solo del dueño o `ADMIN` | Que un cliente no pueda cambiar precios, mover stock salteando Ventas ni ver compras ajenas | `401` / `403` nuevos en las APIs. Las consultas (`GET /productos`, `GET /stock`) siguen públicas | D10, D13 |
+| Ventas llama a Inventario con su propio token de servicio y envía el `usuarioId` del cliente en C2 | El reintento de 30 s no tiene el token del cliente, y un `CLIENTE` no debe poder descontar stock | C2 y C3 llevan `Authorization`; C2 agrega `usuarioId`. Flecha nueva Ventas → auth-service (login de la cuenta técnica) | D13 |
+| Los tokens se validan localmente; nadie tiene `depends_on` hacia `auth-service` | Que una caída de `auth-service` no tire abajo las compras | Con `auth-service` caído solo fallan login y registro | D15 |
+| `.env` de la raíz obligatorio (`JWT_SECRET`, `ADMIN_PASSWORD`, `VENTAS_SERVICE_PASSWORD`) | Que ningún secreto quede escrito en `compose.yml` | `docker compose up` falla con un mensaje claro si falta alguno | D16 |
+
+Diagrama de despliegue del TP7: [`diagrama-arquitectura.md`](diagrama-arquitectura.md#despliegue-en-el-tp7-con-auth-service).
 
