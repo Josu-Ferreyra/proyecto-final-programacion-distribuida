@@ -1,10 +1,15 @@
-# Entorno completo del TP6: los tres microservicios con sus bases, en una red interna.
-# Convenciones (nombres, puertos, variables): docs/08-ratificacion-tp6.md §8.3.
+# Entorno completo del TP7: auth-service y los tres microservicios con sus bases, en una red
+# interna (11 contenedores). Convenciones del TP6: docs/08-ratificacion-tp6.md §8.3; las del
+# TP7 (auth-service, JWT, secretos): docs/14-modelo-seguridad.md.
 # Red, puertos y volúmenes explicados en docs/09-ejecucion-docker.md.
 #
+#   cp .env.example .env       (y cambiar los valores ficticios: JWT_SECRET y las passwords)
 #   docker compose up --build -d
 #   docker compose ps          (todos tienen que llegar a "healthy")
 #   docker compose down        (conserva los datos; "down -v" los borra)
+#
+# Ningún secreto está escrito acá: salen del .env de la raíz (no versionado) y, si falta
+# alguno, Compose no arranca (D16).
 name: proyecto-distribuido
 
 x-mongo-healthcheck: &mongo-healthcheck
@@ -14,11 +19,17 @@ x-mongo-healthcheck: &mongo-healthcheck
   retries: 5
   start_period: 10s
 
+# JWT (D9): el mismo secreto y el mismo emisor en los 4 servicios. Cada servicio valida los
+# tokens localmente, sin consultar a auth-service (D15).
+x-jwt-env: &jwt-env
+  JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET en .env (ver .env.example)}
+  JWT_ISSUER: auth-service
+
 # Configuración común a los 3 nodos de Inventario. Cada nodo agrega su identidad
 # (RAFT_NODO_ID) y su base (MONGODB_URI).
 x-inventario: &inventario
   build: ./services/inventario
-  image: grupo/inventario:tp6
+  image: grupo/inventario:tp7
   depends_on:
     inventario-db: { condition: service_healthy }
     redis: { condition: service_healthy }
@@ -31,6 +42,7 @@ x-inventario: &inventario
   restart: on-failure
 
 x-inventario-env: &inventario-env
+  <<: *jwt-env
   SERVICE_NAME: inventario-service
   PORT: 3200
   CLUSTER_FILE: cluster.docker.json
@@ -62,6 +74,13 @@ services:
     healthcheck: *mongo-healthcheck
     networks: [backend]
 
+  # Credenciales (D8): solo auth-service se conecta.
+  auth-db:
+    image: mongo:7
+    volumes: [auth-data:/data/db]
+    healthcheck: *mongo-healthcheck
+    networks: [backend]
+
   # Lock interno de Inventario. Ningún otro servicio se conecta.
   redis:
     image: redis:7-alpine
@@ -72,10 +91,40 @@ services:
       retries: 5
     networks: [backend]
 
+  # Única autoridad sobre credenciales: registro, login y emisión del JWT (D8). Crea al
+  # arrancar el primer ADMIN y la cuenta técnica de Ventas si no existen (D11).
+  auth-service:
+    build: ./services/auth
+    image: grupo/auth:tp7
+    environment:
+      <<: *jwt-env
+      SERVICE_NAME: auth-service
+      PORT: 3400
+      MONGODB_URI: mongodb://auth-db:27017/auth
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}          # se puede bajar a 30s para la prueba G
+      BCRYPT_ROUNDS: 12
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@tp7.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Falta ADMIN_PASSWORD en .env (ver .env.example)}
+      VENTAS_SERVICE_EMAIL: ventas@servicio.local
+      VENTAS_SERVICE_PASSWORD: ${VENTAS_SERVICE_PASSWORD:?Falta VENTAS_SERVICE_PASSWORD en .env (ver .env.example)}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["3400:3400"]
+    depends_on:
+      auth-db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3400/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: on-failure
+    networks: [backend]
+
   catalogo-service:
     build: ./services/catalogo
-    image: grupo/catalogo:tp6
+    image: grupo/catalogo:tp7
     environment:
+      <<: *jwt-env
       SERVICE_NAME: catalogo-service
       PORT: 3100
       MONGODB_URI: mongodb://catalogo-db:27017/catalogo
@@ -129,8 +178,9 @@ services:
 
   ventas-service:
     build: ./services/ventas
-    image: grupo/ventas:tp6
+    image: grupo/ventas:tp7
     environment:
+      <<: *jwt-env
       SERVICE_NAME: ventas-service
       PORT: 3300
       MONGODB_URI: mongodb://ventas-db:27017/ventas
@@ -138,11 +188,16 @@ services:
       INVENTARIO_SERVICE_URL: http://inventario-service:3200   # D1: alias de los 3 nodos
       HTTP_TIMEOUT_MS: 3000
       REINTENTO_REINTEGRO_MS: ${REINTENTO_REINTEGRO_MS:-30000}   # se puede bajar en las pruebas
+      # D13: Ventas hace login con su cuenta técnica (rol SERVICIO) para llamar a Inventario.
+      AUTH_SERVICE_URL: http://auth-service:3400
+      VENTAS_SERVICE_EMAIL: ventas@servicio.local
+      VENTAS_SERVICE_PASSWORD: ${VENTAS_SERVICE_PASSWORD:?Falta VENTAS_SERVICE_PASSWORD en .env (ver .env.example)}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports: ["3300:3300"]
     depends_on:
       ventas-db: { condition: service_healthy }
-      # A propósito NO depende de Catálogo ni de Inventario: si no están, responde 503
+      # A propósito NO depende de Catálogo ni de Inventario: si no están, responde 503.
+      # Tampoco de auth-service (D15): los tokens se validan localmente y solo falla el login.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3300/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -152,6 +207,7 @@ services:
     restart: on-failure
     networks: [backend]
 
+# Ningún servicio tiene depends_on hacia auth-service (D15).
 # Las bases, Redis y los puertos Raft no se publican al host: solo los usan los
 # contenedores, por nombre DNS dentro de esta red.
 networks:
@@ -161,3 +217,4 @@ volumes:
   catalogo-data:
   inventario-data:
   ventas-data:
+  auth-data:
