@@ -9,6 +9,8 @@ const movimientoSchema = new mongoose.Schema(
     cantidad: { type: Number, required: true },
     stockResultante: { type: Number, required: true },
     referencia: { type: String },
+    // Quién originó el movimiento: el ADMIN que ajustó, o el cliente de la compra (D13).
+    usuarioId: { type: String },
     fecha: { type: Date, required: true },
     indiceRaft: { type: Number, required: true },
   },

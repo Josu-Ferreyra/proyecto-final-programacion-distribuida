@@ -17,6 +17,7 @@ const { crearCatalogoClient } = require('./clients/catalogoClient');
 const { crearRedisClient } = require('./lib/redisClient');
 const { crearLock } = require('./lib/lock');
 const { crearReenviarAlLeader } = require('./middlewares/reenviarAlLeader');
+const { crearAuth } = require('./middlewares/auth');
 const { crearApp } = require('./app');
 
 async function main() {
@@ -42,7 +43,9 @@ async function main() {
 
   const soloEscrituraEnLeader = crearReenviarAlLeader({ raft, config, logger });
 
-  const app = crearApp({ config, logger, raft, stockService, soloEscrituraEnLeader });
+  const auth = crearAuth({ secret: config.jwtSecret, issuer: config.jwtIssuer, serviceName: config.serviceName, logger });
+
+  const app = crearApp({ config, logger, raft, stockService, soloEscrituraEnLeader, auth });
   const servidor = http.createServer(app);
   await new Promise((resolve, reject) => {
     servidor.once('error', reject);

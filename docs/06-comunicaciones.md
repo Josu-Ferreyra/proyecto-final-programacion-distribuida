@@ -33,8 +33,8 @@ que se llame mutuamente.
 | # | Origen | Destino | Necesidad | Método / endpoint | Datos intercambiados | Respuesta esperada |
 |---|---|---|---|---|---|---|
 | C1 | Ventas | Catálogo | Verificar que los productos existan y estén activos, y obtener el precio vigente y el nombre | `GET /productos?ids=a,b,c` | Envía: lista de ids · Recibe: `[{ id, nombre, precio, activo }]` | `200` con los productos encontrados (los ids ausentes no aparecen) |
-| C2 | Ventas | Inventario | Descontar las unidades de la compra, todo o nada | `POST /descuentos` | Envía: `{ referencia: compraId, items: [{ productoId, cantidad }] }` · Recibe: `{ referencia, items }` | `201` descontado · `200` si esa referencia ya se había descontado (idempotente) · `409 { faltantes: [{ productoId, solicitado, disponible }] }` |
-| C3 | Ventas | Inventario | Reintegrar las unidades si la compra se cancela o si falla después de descontar (compensación) | `DELETE /descuentos/:referencia` | Envía: `compraId` | `204` reintegrado · `404` no había descuento con esa referencia |
+| C2 | Ventas | Inventario | Descontar las unidades de la compra, todo o nada | `POST /descuentos` con `Authorization: Bearer <token de servicio>` (TP7, D13) | Envía: `{ referencia: compraId, items: [{ productoId, cantidad }], usuarioId }` (`usuarioId`: el `sub` del cliente, desde el TP7) · Recibe: `{ referencia, items }` | `201` descontado · `200` si esa referencia ya se había descontado (idempotente) · `409 { faltantes: [{ productoId, solicitado, disponible }] }` |
+| C3 | Ventas | Inventario | Reintegrar las unidades si la compra se cancela o si falla después de descontar (compensación) | `DELETE /descuentos/:referencia` con `Authorization: Bearer <token de servicio>` (TP7, D13) | Envía: `compraId` | `204` reintegrado · `404` no había descuento con esa referencia |
 | C4 | Inventario | Catálogo | Verificar que el producto exista y esté activo antes de darle de alta su stock | `GET /productos/:id` | Envía: `productoId` · Recibe: `{ id, activo }` (ignora el resto) | `200` · `404` si no existe |
 
 ## 6.3 Análisis de cada comunicación

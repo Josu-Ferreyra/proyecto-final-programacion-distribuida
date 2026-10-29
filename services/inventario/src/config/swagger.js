@@ -1,15 +1,27 @@
 // Especificación OpenAPI de la API pública de Inventario. C2 y C3 son el contrato con
 // Ventas (docs/06-comunicaciones.md §6.2): se documentan con ejemplos de cada respuesta.
+// TP7: los endpoints protegidos se marcan con proteger() al final, con los mismos roles que
+// stock.routes.js y cluster.routes.js (matriz de docs/14-modelo-seguridad.md).
 
 const json = (schema, example) => ({ 'application/json': example === undefined ? { schema } : { schema, example } });
 const ref = (nombre) => ({ $ref: `#/components/schemas/${nombre}` });
 const respuesta = (nombre) => ({ $ref: `#/components/responses/${nombre}` });
 
+// Marca un endpoint como protegido: esquema Bearer, roles en la descripción y respuestas 401 y 403.
+function proteger(operacion, roles) {
+  operacion.security = [{ bearerAuth: [] }];
+  const rolesTexto = roles.map((r) => '`' + r + '`').join(' o ');
+  const nota = '**Requiere** `Authorization: Bearer <token>` con rol ' + rolesTexto + '.';
+  operacion.description = operacion.description ? nota + '\n\n' + operacion.description : nota;
+  operacion.responses[401] = respuesta('NoAutenticado');
+  operacion.responses[403] = respuesta('SinPermiso');
+}
+
 function crearSpec({ serviceName }) {
-  return {
+  const spec = {
     openapi: '3.0.3',
     info: {
-      title: 'Servicio de Inventario - TP6 Programación Distribuida',
+      title: 'Servicio de Inventario - TP7 Programación Distribuida',
       version: '1.0.0',
       description:
         'Única autoridad sobre cuántas unidades de cada producto están disponibles. Corre como un ' +
@@ -19,7 +31,11 @@ function crearSpec({ serviceName }) {
         '- **Escrituras** (`PUT`, `POST`, `DELETE`): si llegan a un follower, el nodo las reenvía al Leader ' +
         'y devuelve su respuesta. Solo se responde `503` si no hay Leader o no se alcanza mayoría.\n' +
         '- Un producto sin stock registrado tiene **0** unidades disponibles.\n\n' +
-        'El diagnóstico del cluster (`/api/cluster/*`) no es parte del contrato de negocio.',
+        'El diagnóstico del cluster (`/api/cluster/*`) no es parte del contrato de negocio.\n\n' +
+        '**Seguridad (TP7):** las consultas de stock y el estado del cluster son públicos. El resto pide un ' +
+        'access token JWT de `auth-service` (botón *Authorize*): `ADMIN` para ajustar stock y ver movimientos; ' +
+        '`SERVICIO` (la cuenta técnica de Ventas) o `ADMIN` para C2 y C3. Un `CLIENTE` no puede mover stock. ' +
+        'Sin token, con token vencido o mal firmado: `401`. Con un rol que no alcanza: `403`.',
     },
     servers: [{ url: '/', description: serviceName }],
     tags: [
@@ -174,7 +190,11 @@ function crearSpec({ serviceName }) {
         DescuentoInput: {
           type: 'object',
           required: ['referencia', 'items'],
-          properties: { referencia: { type: 'string', description: 'compraId de Ventas' }, items: { type: 'array', minItems: 1, maxItems: 50, items: ref('Item') } },
+          properties: {
+            referencia: { type: 'string', description: 'compraId de Ventas' },
+            items: { type: 'array', minItems: 1, maxItems: 50, items: ref('Item') },
+            usuarioId: { type: 'string', description: 'Para quién fue la compra (el sub del cliente). Opcional: si falta, se usa el del token' },
+          },
         },
         Descuento: { type: 'object', properties: { referencia: { type: 'string' }, items: { type: 'array', items: ref('Item') } } },
         Movimiento: {
@@ -185,6 +205,7 @@ function crearSpec({ serviceName }) {
             cantidad: { type: 'integer', description: 'Con signo' },
             stockResultante: { type: 'integer' },
             referencia: { type: 'string' },
+            usuarioId: { type: 'string', description: 'Quién originó el movimiento' },
             fecha: { type: 'string', format: 'date-time' },
             indiceRaft: { type: 'integer' },
           },
@@ -205,7 +226,18 @@ function crearSpec({ serviceName }) {
           ],
         },
       },
+      securitySchemes: {
+        bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Access token de auth-service (POST /auth/login)' },
+      },
       responses: {
+        NoAutenticado: {
+          description: 'Sin identidad válida: token ausente, mal formado, mal firmado o vencido',
+          content: json(ref('Error'), { error: 'Token vencido', servicio: 'inventario-service' }),
+        },
+        SinPermiso: {
+          description: 'Identidad válida, pero el rol no alcanza para esta operación',
+          content: json(ref('Error'), { error: 'Permisos insuficientes', servicio: 'inventario-service' }),
+        },
         SolicitudInvalida: { description: 'Datos inválidos', content: json(ref('Error'), { error: 'La "cantidad" debe ser un entero mayor o igual a 0', servicio: 'inventario-service' }) },
         NoDisponible: {
           description: 'Inventario no pudo completar la operación: sin Leader, sin mayoría, base, Redis o Catálogo no disponibles',
@@ -214,6 +246,13 @@ function crearSpec({ serviceName }) {
       },
     },
   };
+
+  proteger(spec.paths['/stock/{productoId}'].put, ['ADMIN']);
+  proteger(spec.paths['/descuentos'].post, ['SERVICIO', 'ADMIN']);
+  proteger(spec.paths['/descuentos/{referencia}'].delete, ['SERVICIO', 'ADMIN']);
+  proteger(spec.paths['/movimientos'].get, ['ADMIN']);
+  proteger(spec.paths['/api/cluster/log'].get, ['ADMIN']);
+  return spec;
 }
 
 module.exports = { crearSpec };

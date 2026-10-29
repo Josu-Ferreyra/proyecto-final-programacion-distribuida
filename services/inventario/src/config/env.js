@@ -18,6 +18,15 @@ function obligatoria(nombre) {
   return valor;
 }
 
+// HS256 necesita una clave larga: con menos de 32 caracteres se puede adivinar por fuerza bruta.
+function secretoJwt() {
+  const valor = obligatoria('JWT_SECRET');
+  if (valor.length < 32) {
+    throw new Error('JWT_SECRET tiene que tener al menos 32 caracteres (ver .env.example para generar uno)');
+  }
+  return valor;
+}
+
 const config = Object.freeze({
   serviceName: process.env.SERVICE_NAME || 'inventario-service',
   // Si se define, tiene que coincidir con el apiHttpPort del nodo en CLUSTER_FILE.
@@ -47,6 +56,10 @@ const config = Object.freeze({
   lockEsperaMs: entero('LOCK_WAIT_MS', 400, { min: 0 }),
   // Demora artificial dentro de la sección crítica del descuento (pruebas de fallos).
   descuentoDelayMs: entero('DESCUENTO_DELAY_MS', 0, { min: 0 }),
+
+  // JWT (D9, D16): el secreto llega por entorno y el servicio no arranca sin uno robusto.
+  jwtSecret: secretoJwt(),
+  jwtIssuer: process.env.JWT_ISSUER || 'auth-service',
 });
 
 module.exports = config;
