@@ -1,22 +1,26 @@
-// Smoke test de punta a punta (prueba "CRUD / negocio" de la sección 18 del TP6).
+// Smoke test de punta a punta (prueba "CRUD / negocio" del TP6, con la seguridad del TP7).
 //
 // Verifica, con el código HTTP esperado en cada paso, que las operaciones principales
-// siguen funcionando después de la migración, cruzando los tres servicios. Usa solo las
-// APIs públicas y deja el stock como estaba (la compra de prueba se cancela).
+// siguen funcionando cruzando los cuatro servicios, y que la autenticación y la autorización
+// rechazan lo que tienen que rechazar (401, 403 y la propiedad de la compra). Usa solo las APIs
+// públicas y deja el stock como estaba (la compra de prueba se cancela).
 //
-// Requisito: haber corrido antes `node scripts/seed.js` (lee scripts/.datos-prueba.json).
+// Requisito: haber corrido antes `node scripts/seed.js` (lee scripts/.datos-prueba.json y
+// usa los clientes de prueba que registra el seed).
 //
 // Uso (Node 18+, sin dependencias), desde la raíz del repositorio:
 //   node scripts/smoke-test.js
 // Variables opcionales (por defecto, los puertos publicados por Compose y los locales):
 //   CATALOGO_URL=http://localhost:3100   INVENTARIO_URL=http://localhost:3201
-//   VENTAS_URL=http://localhost:3300
+//   VENTAS_URL=http://localhost:3300     AUTH_URL=http://localhost:3400
 //   INVENTARIO_NODOS=http://localhost:3201,http://localhost:3202,http://localhost:3203
+//   ADMIN_EMAIL / ADMIN_PASSWORD (si no, los del .env de la raíz)
 //
 // Termina con "N OK, M FAIL" y código de salida 1 si algún paso falla.
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { AUTH, CLIENTES, credencialesAdmin, login } = require('./lib/auth-pruebas');
 
 const quitarBarra = (url) => url.replace(/\/+$/, '');
 const CATALOGO = quitarBarra(process.env.CATALOGO_URL || 'http://localhost:3100');
@@ -32,11 +36,14 @@ const ID_INEXISTENTE = 'ffffffffffffffffffffffff';
 let ok = 0;
 let fallas = 0;
 
-async function pedir(metodo, url, cuerpo) {
+async function pedir(metodo, url, cuerpo, token) {
   try {
     const res = await fetch(url, {
       method: metodo,
-      headers: cuerpo ? { 'Content-Type': 'application/json' } : undefined,
+      headers: {
+        ...(cuerpo ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: cuerpo ? JSON.stringify(cuerpo) : undefined,
       signal: AbortSignal.timeout(15000),
     });
@@ -47,9 +54,10 @@ async function pedir(metodo, url, cuerpo) {
   }
 }
 
-// Un paso: pide, compara el código y (opcional) una condición sobre la respuesta.
-async function paso(descripcion, metodo, url, cuerpo, esperado, condicion) {
-  const r = await pedir(metodo, url, cuerpo);
+// Un paso: pide (con el token indicado, o sin token), compara el código y (opcional) una
+// condición sobre la respuesta.
+async function paso(descripcion, metodo, url, cuerpo, token, esperado, condicion) {
+  const r = await pedir(metodo, url, cuerpo, token);
   let problema = null;
   if (r.status !== esperado) {
     problema = `esperaba ${esperado}, respondió ${r.status} ${JSON.stringify(r.datos)?.slice(0, 160)}`;
@@ -105,69 +113,105 @@ function leerDatos() {
   const compra = (items) => ({ items });
 
   console.log('\n1. Salud de los servicios');
-  await paso('Catálogo /health', 'GET', `${CATALOGO}/health`, null, 200, (d) => (d?.status === 'ok' ? null : 'status distinto de ok'));
+  await paso('auth-service /health', 'GET', `${AUTH}/health`, null, null, 200, (d) => (d?.status === 'ok' ? null : 'status distinto de ok'));
+  await paso('Catálogo /health', 'GET', `${CATALOGO}/health`, null, null, 200, (d) => (d?.status === 'ok' ? null : 'status distinto de ok'));
   for (const nodo of NODOS) {
-    await paso(`Inventario ${nodo} /health`, 'GET', `${nodo}/health`, null, 200, (d) => (d?.status === 'ok' ? null : 'status distinto de ok'));
+    await paso(`Inventario ${nodo} /health`, 'GET', `${nodo}/health`, null, null, 200, (d) => (d?.status === 'ok' ? null : 'status distinto de ok'));
   }
-  await paso('Ventas /health', 'GET', `${VENTAS}/health`, null, 200, (d) => (d?.service === 'ventas-service' ? null : 'service distinto'));
+  await paso('Ventas /health', 'GET', `${VENTAS}/health`, null, null, 200, (d) => (d?.service === 'ventas-service' ? null : 'service distinto'));
 
-  console.log('\n2. Catálogo: alta, consulta, modificación y baja lógica');
+  console.log('\n2. Autenticación (auth-service)');
+  const admin = credencialesAdmin();
+  const sesion = {};
+  for (const [clave, email, password] of [
+    ['admin', admin.email, admin.password],
+    ...CLIENTES.map((c) => [c.clave, c.email, c.password]),
+  ]) {
+    try {
+      sesion[clave] = await login(pedir, email, password);
+      verificar(`Login de ${clave}`, sesion[clave].sub ? null : 'el token no tiene sub');
+    } catch (err) {
+      verificar(`Login de ${clave}`, err.message);
+    }
+  }
+  const tAdmin = sesion.admin?.token;
+  const tCliente1 = sesion.cliente1?.token;
+  const tCliente2 = sesion.cliente2?.token;
+  await paso('Login con password incorrecta', 'POST', `${AUTH}/auth/login`, { email: CLIENTES[0].email, password: 'no-es-la-password' }, null, 401);
+
+  console.log('\n3. Catálogo: alta, consulta, modificación y baja lógica (ADMIN)');
   const nombre = `Producto smoke test ${Date.now()}`;
-  const alta = await paso('Crear producto', 'POST', `${CATALOGO}/productos`, { nombre, precio: 500, categoria: 'otro' }, 201, (d) =>
+  await paso('Crear producto sin token', 'POST', `${CATALOGO}/productos`, { nombre, precio: 500, categoria: 'otro' }, null, 401);
+  await paso('Crear producto con un CLIENTE', 'POST', `${CATALOGO}/productos`, { nombre, precio: 500, categoria: 'otro' }, tCliente1, 403);
+  const alta = await paso('Crear producto con ADMIN', 'POST', `${CATALOGO}/productos`, { nombre, precio: 500, categoria: 'otro' }, tAdmin, 201, (d) =>
     d?.id && d.activo === true ? null : 'no devolvió id o no quedó activo'
   );
   const nuevoId = alta.datos?.id || ID_INEXISTENTE;
-  await paso('Leer producto', 'GET', `${CATALOGO}/productos/${nuevoId}`, null, 200, (d) => (d?.nombre === nombre ? null : 'nombre distinto'));
-  await paso('Modificar precio', 'PUT', `${CATALOGO}/productos/${nuevoId}`, { precio: 750 }, 200, (d) => (d?.precio === 750 ? null : 'precio no actualizado'));
-  await paso('Rechazar stock en Catálogo', 'PUT', `${CATALOGO}/productos/${nuevoId}`, { stock: 5 }, 400);
-  await paso('Dar de baja (lógica)', 'DELETE', `${CATALOGO}/productos/${nuevoId}`, null, 204);
-  await paso('Sigue existiendo, inactivo', 'GET', `${CATALOGO}/productos/${nuevoId}`, null, 200, (d) => (d?.activo === false ? null : 'sigue activo'));
+  await paso('Leer producto (público)', 'GET', `${CATALOGO}/productos/${nuevoId}`, null, null, 200, (d) => (d?.nombre === nombre ? null : 'nombre distinto'));
+  await paso('Modificar precio', 'PUT', `${CATALOGO}/productos/${nuevoId}`, { precio: 750 }, tAdmin, 200, (d) => (d?.precio === 750 ? null : 'precio no actualizado'));
+  await paso('Rechazar stock en Catálogo', 'PUT', `${CATALOGO}/productos/${nuevoId}`, { stock: 5 }, tAdmin, 400);
+  await paso('Dar de baja (lógica)', 'DELETE', `${CATALOGO}/productos/${nuevoId}`, null, tAdmin, 204);
+  await paso('Sigue existiendo, inactivo', 'GET', `${CATALOGO}/productos/${nuevoId}`, null, null, 200, (d) => (d?.activo === false ? null : 'sigue activo'));
 
-  console.log('\n3. Inventario: disponibilidad');
-  const stockInicial = await paso('Consultar stock del teclado', 'GET', `${INVENTARIO}/stock?productoIds=${teclado.id}`, null, 200, (d) =>
+  console.log('\n4. Inventario: disponibilidad y quién puede mover stock');
+  const stockInicial = await paso('Consultar stock del teclado (público)', 'GET', `${INVENTARIO}/stock?productoIds=${teclado.id}`, null, null, 200, (d) =>
     Number.isInteger(d?.[0]?.stock) ? null : 'respuesta sin stock'
   );
   const disponible = stockInicial.datos?.[0]?.stock ?? 0;
+  await paso('Un CLIENTE no puede descontar stock directo en Inventario', 'POST', `${INVENTARIO}/descuentos`, {
+    referencia: `smoke-directo-${Date.now()}`,
+    items: [{ productoId: teclado.id, cantidad: 1 }],
+  }, tCliente1, 403);
+  await paso('Un CLIENTE no puede ajustar stock', 'PUT', `${INVENTARIO}/stock/${teclado.id}`, { cantidad: 999 }, tCliente1, 403);
 
-  console.log('\n4. Ventas: registrar compras (C1 + C2)');
+  console.log('\n5. Ventas: registrar compras (C1 + C2 con la cuenta de servicio)');
+  await paso('Comprar sin token', 'POST', `${VENTAS}/compras`, compra([{ productoId: teclado.id, cantidad: 1 }]), null, 401);
   const confirmada = await paso(
-    'Comprar 1 teclado',
+    'cliente1 compra 1 teclado',
     'POST',
     `${VENTAS}/compras`,
     compra([{ productoId: teclado.id, cantidad: 1 }]),
+    tCliente1,
     201,
-    (d) => (d?.estado === 'CONFIRMADA' && d.total === teclado.precio ? null : `estado ${d?.estado}, total ${d?.total}`)
+    (d) => {
+      if (d?.estado !== 'CONFIRMADA' || d.total !== teclado.precio) return `estado ${d?.estado}, total ${d?.total}`;
+      return d.usuarioId === sesion.cliente1?.sub ? null : `la compra quedó a nombre de ${d.usuarioId}`;
+    }
   );
   const compraId = confirmada.datos?.compraId || ID_INEXISTENTE;
   verificar('El stock bajó 1 unidad', await esperarStock(teclado.id, disponible - 1));
-  await paso('Comprar más unidades de las que hay', 'POST', `${VENTAS}/compras`, compra([{ productoId: teclado.id, cantidad: 1000 }]), 409, (d) =>
+  await paso('Comprar más unidades de las que hay', 'POST', `${VENTAS}/compras`, compra([{ productoId: teclado.id, cantidad: 1000 }]), tCliente1, 409, (d) =>
     Array.isArray(d?.faltantes) && d.faltantes[0]?.productoId === teclado.id ? null : 'sin faltantes'
   );
-  await paso('Comprar un producto inexistente', 'POST', `${VENTAS}/compras`, compra([{ productoId: ID_INEXISTENTE, cantidad: 1 }]), 400, (d) =>
+  await paso('Comprar un producto inexistente', 'POST', `${VENTAS}/compras`, compra([{ productoId: ID_INEXISTENTE, cantidad: 1 }]), tCliente1, 400, (d) =>
     d?.productosInexistentes?.includes(ID_INEXISTENTE) ? null : 'sin productosInexistentes'
   );
-  await paso('Comprar el producto dado de baja', 'POST', `${VENTAS}/compras`, compra([{ productoId: baja.id, cantidad: 1 }]), 409, (d) =>
+  await paso('Comprar el producto dado de baja', 'POST', `${VENTAS}/compras`, compra([{ productoId: baja.id, cantidad: 1 }]), tCliente1, 409, (d) =>
     d?.productosInactivos?.includes(baja.id) ? null : 'sin productosInactivos'
   );
   verificar('Los rechazos no tocaron el stock', await esperarStock(teclado.id, disponible - 1));
 
-  console.log('\n5. Ventas: consultar y cancelar (C3)');
-  await paso('Consultar la compra', 'GET', `${VENTAS}/compras/${compraId}`, null, 200, (d) => {
+  console.log('\n6. Ventas: propiedad de la compra, trazabilidad y cancelación (C3)');
+  await paso('cliente1 consulta su compra', 'GET', `${VENTAS}/compras/${compraId}`, null, tCliente1, 200, (d) => {
     const item = d?.items?.[0];
     return item?.precioUnitario === teclado.precio && item.nombreProducto === teclado.nombre ? null : 'sin precio pagado o nombre';
   });
-  const movimientos = await pedir('GET', `${INVENTARIO}/movimientos?productoId=${teclado.id}`);
+  await paso('cliente2 NO puede consultar la compra de cliente1', 'GET', `${VENTAS}/compras/${compraId}`, null, tCliente2, 403);
+  await paso('ADMIN consulta la compra de cliente1', 'GET', `${VENTAS}/compras/${compraId}`, null, tAdmin, 200);
+  const movimientos = await pedir('GET', `${INVENTARIO}/movimientos?productoId=${teclado.id}`, null, tAdmin);
+  const descuento = Array.isArray(movimientos.datos) ? movimientos.datos.find((m) => m.tipo === 'DESCUENTO' && m.referencia === compraId) : null;
+  verificar('Inventario registró el DESCUENTO con referencia = compraId', descuento ? null : `no aparece el movimiento (status ${movimientos.status})`);
   verificar(
-    'Inventario registró el DESCUENTO con referencia = compraId',
-    Array.isArray(movimientos.datos) && movimientos.datos.some((m) => m.tipo === 'DESCUENTO' && m.referencia === compraId)
-      ? null
-      : 'no aparece el movimiento'
+    'El DESCUENTO guarda el usuarioId de cliente1 (contexto propagado por Ventas)',
+    descuento && descuento.usuarioId === sesion.cliente1?.sub ? null : `usuarioId del movimiento: ${descuento?.usuarioId}`
   );
-  await paso('Cancelar la compra', 'PATCH', `${VENTAS}/compras/${compraId}/cancelar`, null, 200, (d) =>
+  await paso('cliente2 NO puede cancelar la compra de cliente1', 'PATCH', `${VENTAS}/compras/${compraId}/cancelar`, null, tCliente2, 403);
+  verificar('El rechazo no tocó el stock', await esperarStock(teclado.id, disponible - 1));
+  await paso('cliente1 cancela su compra', 'PATCH', `${VENTAS}/compras/${compraId}/cancelar`, null, tCliente1, 200, (d) =>
     d?.estado === 'CANCELADA' ? null : `estado ${d?.estado}`
   );
   verificar('El stock volvió al valor inicial', await esperarStock(teclado.id, disponible));
-  await paso('Cancelar otra vez', 'PATCH', `${VENTAS}/compras/${compraId}/cancelar`, null, 409);
+  await paso('Cancelar otra vez', 'PATCH', `${VENTAS}/compras/${compraId}/cancelar`, null, tCliente1, 409);
 
   console.log(`\n${ok} OK, ${fallas} FAIL`);
   process.exit(fallas === 0 ? 0 : 1);
