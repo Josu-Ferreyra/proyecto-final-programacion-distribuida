@@ -279,6 +279,14 @@ Los comandos completos de cada escenario están en
 [`evidencias/fallo-dependencia.md`](./evidencias/fallo-dependencia.md) y
 [`evidencias/fallo-parcial.md`](./evidencias/fallo-parcial.md).
 
+## 12.8 bis · TP7: identidad en la comunicación
+
+Desde el TP7, Ventas llama a Inventario (C2 y C3) con el token de su cuenta técnica (rol `SERVICIO`) y le
+pasa el `usuarioId` del cliente; el reintento de 30 s usa la misma cuenta, así que la compensación no
+depende de que el cliente siga conectado. Obtener ese token es un punto de falla nuevo **antes** del
+descuento: si `auth-service` no responde y el token en caché venció, la compra da `503` sin estado
+parcial. Detalle en [`17-propagacion-identidad.md`](./17-propagacion-identidad.md).
+
 ## 12.9 Evidencias de la Parte 3
 
 | Prueba (sección 18) | Evidencia | Comando para repetirla |
