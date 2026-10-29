@@ -33,9 +33,9 @@ Tokens: los reales se obtienen con `POST /auth/login`. Para las pruebas de recha
 | E | Endpoint protegido sin token | Parte 2 | [`seguridad-e-sin-token.md`](./evidencias/seguridad-e-sin-token.md) | `401 "Token ausente"` + `WWW-Authenticate: Bearer` | ok (Inventario) · Catálogo al mergear la Parte 1 |
 | F | Token modificado manualmente | Parte 2 | [`seguridad-f-token-modificado.md`](./evidencias/seguridad-f-token-modificado.md) | `401 "Token inválido"` (payload alterado, otra clave, `alg: none`, otro `iss`) | ok (Inventario) · Catálogo al mergear la Parte 1 |
 | G | Token vencido | Parte 2 | [`seguridad-g-token-vencido.md`](./evidencias/seguridad-g-token-vencido.md) | `401 "Token vencido"`, también con un token que vence mientras se usa | ok (Inventario) · Catálogo al mergear la Parte 1 |
-| H | Usuario válido sin rol suficiente | Parte 2 · Parte 3 (Ventas) | [`seguridad-h-rol-insuficiente.md`](./evidencias/seguridad-h-rol-insuficiente.md) | `403 "Permisos insuficientes"`; un CLIENTE no puede descontar stock directo | ok (Inventario) · Catálogo y Ventas pendiente |
-| I | Usuario con rol autorizado | Parte 2 · Parte 3 (Ventas) | [`seguridad-i-rol-autorizado.md`](./evidencias/seguridad-i-rol-autorizado.md) | La operación se ejecuta (`200`/`201`/`204`) | ok (Inventario) · Catálogo y Ventas pendiente |
-| J | Caso de uso que atraviesa dos servicios | Parte 3 | `seguridad-j-compra.md` | Ventas valida al cliente y llama a Inventario con su token de servicio; el `usuarioId` llega al movimiento | pendiente (Parte 3) |
+| H | Usuario válido sin rol suficiente | Parte 2 · Parte 3 (Ventas) | [`seguridad-h-rol-insuficiente.md`](./evidencias/seguridad-h-rol-insuficiente.md) | `403 "Permisos insuficientes"`; un CLIENTE no puede descontar stock directo | ok (Inventario) · ok (Ventas: [`seguridad-h-i-ventas.md`](./evidencias/seguridad-h-i-ventas.md)) · Catálogo en las evidencias de la Parte 1 |
+| I | Usuario con rol autorizado | Parte 2 · Parte 3 (Ventas) | [`seguridad-i-rol-autorizado.md`](./evidencias/seguridad-i-rol-autorizado.md) | La operación se ejecuta (`200`/`201`/`204`) | ok (Inventario) · ok (Ventas: [`seguridad-h-i-ventas.md`](./evidencias/seguridad-h-i-ventas.md)) · Catálogo en las evidencias de la Parte 1 |
+| J | Caso de uso que atraviesa dos servicios | Parte 3 | [`seguridad-j-compra.md`](./evidencias/seguridad-j-compra.md) | Ventas valida al cliente y llama a Inventario con su token de servicio; el `usuarioId` llega al movimiento | ok |
 | K | Reiniciar la solución con Compose | Parte 1 | `seguridad-k-reinicio.md` | Los usuarios persisten y el login vuelve a funcionar | pendiente (Parte 1) |
 | L | Inspeccionar la persistencia de usuarios | Parte 1 | `seguridad-l-hash.md` | `passwordHash` con formato bcrypt (`$2a$`/`$2b$`), sin la password | pendiente (Parte 1) |
 
@@ -49,7 +49,7 @@ reenvío por un follower y la trazabilidad): [`seguridad-inventario-middleware.m
 | Escritura protegida por un follower de Inventario | Parte 2 | [`seguridad-inventario-middleware.md`](./evidencias/seguridad-inventario-middleware.md) §5 | ADMIN: el follower reenvía con el `Authorization` y responde `200`. CLIENTE: `403` en el follower, sin reenviar | ok |
 | Trazabilidad del `usuarioId` en Inventario | Parte 2 | [`seguridad-i-rol-autorizado.md`](./evidencias/seguridad-i-rol-autorizado.md) | Cada movimiento guarda quién lo originó (D13) | ok |
 | Tokens en los logs | Parte 2 | [`seguridad-inventario-middleware.md`](./evidencias/seguridad-inventario-middleware.md) | `grep -c "eyJ"` sobre los logs de Inventario → `0` | ok |
-| `auth-service` caído con tokens ya emitidos (D15) | Parte 2 | `seguridad-auth-caido.md` | `docker compose stop auth-service`: un token emitido antes sigue valiendo en Catálogo e Inventario; el login falla | pendiente (se corre cuando esté `auth-service`) |
+| `auth-service` caído con tokens ya emitidos (D15) | Parte 3 | [`seguridad-auth-caido.md`](./evidencias/seguridad-auth-caido.md) | `docker compose stop auth-service`: el token del cliente sigue valiendo; con el token de servicio de Ventas vencido, la compra da `503` antes de descontar, y vuelve a `201` al levantar `auth-service` | ok |
 | Cuenta deshabilitada (D12) | Parte 1 | `seguridad-cuenta-deshabilitada.md` | Login → `403 "Cuenta deshabilitada"` | pendiente (Parte 1) |
 
 ## 18.3 Revisión de secretos (TP7 §15)
